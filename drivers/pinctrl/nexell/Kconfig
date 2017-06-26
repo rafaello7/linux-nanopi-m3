@@ -1,0 +1,7 @@
+#
+# NEXELL Pin control drivers
+#
+config PINCTRL_NEXELL
+	bool "Nexell SoC pinctrl driver"
+	select PINMUX
+	select PINCONF

@@ -21,6 +21,9 @@
 #include <linux/phy/phy.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
+#ifdef CONFIG_RESET_CONTROLLER
+#include <linux/reset.h>
+#endif
 
 #include "ohci.h"
 
@@ -86,6 +89,20 @@ static int exynos_ohci_phy_enable(struct device *dev)
 	struct exynos_ohci_hcd *exynos_ohci = to_exynos_ohci(hcd);
 	int i;
 	int ret = 0;
+
+	if (of_device_is_compatible(dev->of_node,
+					"nexell,nexell-ohci")) {
+#ifdef CONFIG_RESET_CONTROLLER
+		struct reset_control *rst;
+
+		rst = devm_reset_control_get(dev, "usbhost-reset");
+		if (!IS_ERR(rst)) {
+			if (reset_control_status(rst))
+				reset_control_reset(rst);
+            reset_control_put(rst);
+		}
+#endif
+	}
 
 	for (i = 0; ret == 0 && i < PHY_NUMBER; i++)
 		if (!IS_ERR(exynos_ohci->phy[i]))
@@ -215,10 +232,12 @@ static int exynos_ohci_remove(struct platform_device *pdev)
 
 static void exynos_ohci_shutdown(struct platform_device *pdev)
 {
+#if !(defined(CONFIG_ARCH_S5P4418) || defined(CONFIG_ARCH_S5P6818))
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
 
 	if (hcd->driver->shutdown)
 		hcd->driver->shutdown(hcd);
+#endif
 }
 
 #ifdef CONFIG_PM
@@ -276,6 +295,7 @@ static const struct dev_pm_ops exynos_ohci_pm_ops = {
 static const struct of_device_id exynos_ohci_match[] = {
 	{ .compatible = "samsung,exynos4210-ohci" },
 	{ .compatible = "samsung,exynos5440-ohci" },
+	{ .compatible = "nexell,nexell-ohci" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, exynos_ohci_match);

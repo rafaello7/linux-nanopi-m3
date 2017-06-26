@@ -147,5 +147,7 @@ struct plat_stmmacenet_data {
 	bool tso_en;
 	int mac_port_sel_speed;
 	bool en_tx_lpi_clockgating;
+	void (*get_wol)(struct net_device *, struct ethtool_wolinfo *);
+	int (*set_wol)(struct net_device *, struct ethtool_wolinfo *);
 };
 #endif

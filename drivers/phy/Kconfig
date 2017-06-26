@@ -318,6 +318,11 @@ config PHY_EXYNOS5250_USB2
 	depends on PHY_SAMSUNG_USB2
 	default SOC_EXYNOS5250 || SOC_EXYNOS5420
 
+config PHY_NX_USB2
+	bool "Nexell USB 2.0 PHY driver"
+	depends on PHY_SAMSUNG_USB2
+	default ARCH_S5P4418 || ARCH_S5P6818
+
 config PHY_EXYNOS5_USBDRD
 	tristate "Exynos5 SoC series USB DRD PHY driver"
 	depends on ARCH_EXYNOS && OF

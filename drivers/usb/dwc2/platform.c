@@ -46,6 +46,7 @@
 #include <linux/phy/phy.h>
 #include <linux/platform_data/s3c-hsotg.h>
 #include <linux/reset.h>
+#include <linux/of_gpio.h>
 
 #include <linux/usb/of.h>
 
@@ -134,6 +135,21 @@ static int __dwc2_lowlevel_hw_enable(struct dwc2_hsotg *hsotg)
 		ret = clk_prepare_enable(hsotg->clk);
 		if (ret)
 			return ret;
+	}
+
+	if (of_device_is_compatible(hsotg->dev->of_node,
+					    "nexell,nexell-dwc2otg")) {
+#ifdef CONFIG_RESET_CONTROLLER
+			struct reset_control *rst;
+
+			rst = devm_reset_control_get(hsotg->dev,
+						     "usbotg-reset");
+			if (!IS_ERR(rst)) {
+				if (reset_control_status(rst))
+					reset_control_reset(rst);
+                reset_control_put(rst);
+			}
+#endif
 	}
 
 	if (hsotg->uphy) {
@@ -411,6 +427,27 @@ static int dwc2_driver_probe(struct platform_device *dev)
 				  dev_name(hsotg->dev), hsotg);
 	if (retval)
 		return retval;
+
+	if (of_device_is_compatible(hsotg->dev->of_node,
+				    "nexell,nexell-dwc2otg")) {
+#ifdef CONFIG_GPIOLIB
+		hsotg->ext_vbus_io = of_get_named_gpio(dev->dev.of_node,
+						       "gpios", 0);
+		if (gpio_is_valid(hsotg->ext_vbus_io)) {
+			retval = devm_gpio_request_one(&dev->dev,
+						   hsotg->ext_vbus_io,
+						   GPIOF_OUT_INIT_LOW,
+						   "otg_vbus");
+
+			if (retval < 0) {
+				dev_err(hsotg->dev,
+					"can't request otg_vbus gpio %d\n",
+					hsotg->ext_vbus_io);
+				return 0;
+			}
+		}
+#endif
+	}
 
 	retval = dwc2_lowlevel_hw_enable(hsotg);
 	if (retval)

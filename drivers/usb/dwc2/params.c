@@ -113,6 +113,20 @@ static void dwc2_set_amlogic_params(struct dwc2_hsotg *hsotg)
 	p->uframe_sched = false;
 }
 
+static void dwc2_set_nexell_params(struct dwc2_hsotg *hsotg)
+{
+	struct dwc2_core_params *p = &hsotg->params;
+
+	p->host_rx_fifo_size		= 1024;	/* 1024 DWORDs */
+	p->host_nperio_tx_fifo_size	= 256;	/* 256 DWORDs */
+	p->host_perio_tx_fifo_size	= 512;	/* 512 DWORDs */
+	p->max_transfer_size		= 65535;
+	p->max_packet_count		    = 511;
+	p->host_channels			= 8;
+	p->reload_ctl			    = false;
+	p->uframe_sched			    = false;
+}
+
 static void dwc2_set_amcc_params(struct dwc2_hsotg *hsotg)
 {
 	struct dwc2_core_params *p = &hsotg->params;
@@ -128,6 +142,7 @@ const struct of_device_id dwc2_of_match_table[] = {
 	{ .compatible = "lantiq,xrx200-usb", .data = dwc2_set_ltq_params },
 	{ .compatible = "snps,dwc2" },
 	{ .compatible = "samsung,s3c6400-hsotg" },
+	{ .compatible = "nexell,nexell-dwc2otg", .data = dwc2_set_nexell_params },
 	{ .compatible = "amlogic,meson8b-usb",
 	  .data = dwc2_set_amlogic_params },
 	{ .compatible = "amlogic,meson-gxbb-usb",
