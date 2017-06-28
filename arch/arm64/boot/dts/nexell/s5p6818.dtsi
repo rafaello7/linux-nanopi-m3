@@ -586,8 +586,8 @@
 			g-use-dma = <1>;
 			g-rx-fifo-size = <1064>;
 			g-np-tx-fifo-size = <512>;
-			g-tx-fifo-size = <512 512 256 256 256 256 256 256 256
-			    256 256 256 256 256 256>;
+			g-tx-fifo-size = <512 512 512 512 512 256 256 256 256
+			    256 64 64 64 64 64>;
 			status = "disabled";
 		};
 

@@ -341,9 +341,6 @@ int dwc2_core_reset(struct dwc2_hsotg *hsotg, bool skip_wait)
 		}
 	}
 
-	if( ! of_device_is_compatible(hsotg->dev->of_node,
-				    "nexell,nexell-dwc2otg"))
-	{
 	/* Core Soft Reset */
 	greset = dwc2_readl(hsotg->regs + GRSTCTL);
 	greset |= GRSTCTL_CSFTRST;
@@ -358,7 +355,6 @@ int dwc2_core_reset(struct dwc2_hsotg *hsotg, bool skip_wait)
 			return -EBUSY;
 		}
 	} while (greset & GRSTCTL_CSFTRST);
-	}
 
 	/* Wait for AHB master IDLE state */
 	count = 0;

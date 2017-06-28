@@ -195,7 +195,7 @@ static int nx_otg_power_on(struct samsung_usb2_phy_instance *inst)
 
 	writel(readl((void *)(drv->reg_phy + NX_OTG_CON1)) | NX_OTG_CON1_RST,
 	       (void *)(drv->reg_phy + NX_OTG_CON1));
-	udelay(1);
+	udelay(50);
 
 	writel(readl((void *)(drv->reg_phy + NX_OTG_CON1)) |
 	       NX_OTG_CON1_UTMI_RST,
