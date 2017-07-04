@@ -63,6 +63,10 @@
 			status ="okay";
 		};
 
+		serial1:serial@c00a0000 {
+			status ="okay";
+		};
+
 		amba {
 			pl08xdma0:pl08xdma@c0000000 {
 				use_isr;
@@ -112,6 +116,48 @@
 			nexell,sample_shift = <0x01>;
 			status = "okay";
 		};
+
+		dw_mmc_1:dw_mmc@c0068000 {
+			num-slots = <1>;
+			bus-width = <4>;
+			cap-sd-highspeed;
+			clock-frequency = <100000000>;
+			card-detect-delay = <200>;
+			non-removable;
+			disable-wp;
+            keep-power-in-suspend;
+			nexell,drive_dly = <0x0>;
+			nexell,drive_shift = <0x02>;
+			nexell,sample_dly = <0x00>;
+			nexell,sample_shift = <0x01>;
+			//pinctrl-0 = <&sdmmc1_cclk &sdmmc1_cmd &sdmmc1_bus4 &wifi_rf>;
+			status = "okay";
+
+            brcmf: bcrmf@1 {
+                reg = <1>;
+                compatible = "brcm,bcm4329-fmac";
+            };
+		};
+
+        pinctrl@C0010000 {
+            wifi_rf: wifi-rf {      // wifi module power
+                nexell,pins = "gpiob-24";
+                nexell,pin-function = <1>;
+                nexell,pin-out = <1>;
+                nexell,pin-outlevel = <0>;
+                nexell,pin-pull = <2>;      // == off
+                nexell,pin-strength = <0>;
+            };
+
+            bt_reset: bt-reset {    // bluetooth reset
+                nexell,pins = "gpiob-8";
+                nexell,pin-function = <1>;
+                nexell,pin-out = <1>;
+                nexell,pin-outlevel = <0>;
+                nexell,pin-pull = <2>;      // == off
+                nexell,pin-strength = <0>;
+            };
+        };
 
 		i2c3_gpio:i2c@0 {
 			compatible = "i2c-gpio";

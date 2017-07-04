@@ -61,6 +61,33 @@ pinctrl@C0010000 {
 		#interrupt-cells = <2>;
 	};
 
+    /* Function mapping from kernel 3.x
+     *  pin-function
+     *      PAD_FUNC_ALT0   0
+     *      PAD_FUNC_ALT1   1
+     *      PAD_FUNC_ALT2   2
+     *      PAD_FUNC_ALT3   3
+     *
+     *  pin-out
+     *      PAD_MODE_ALT    0
+     *      PAD_MODE_IN     0
+     *      PAD_MODE_OUT    1
+     *
+     *  pin-outlevel
+     *      PAD_LEVEL_LOW   0
+     *      PAD_LEVEL_HIGH  1
+     *
+     *  pin-pull
+     *      PAD_PULL_DN     0
+     *      PAD_PULL_UP     1
+     *      PAD_PULL_OFF    2
+     *
+     *  pin-strength
+     *      PAD_STRENGTH_0  0
+     *      PAD_STRENGTH_1  1
+     *      PAD_STRENGTH_2  2
+     *      PAD_STRENGTH_3  3
+     */
 
 	/* NAND */
 	nand_default: nand-default {

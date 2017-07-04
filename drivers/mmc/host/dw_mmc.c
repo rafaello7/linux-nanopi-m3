@@ -3107,6 +3107,15 @@ int dw_mci_probe(struct dw_mci *host)
 		}
 	}
 
+	if (drv_data && drv_data->setup_clock) {
+		ret = drv_data->setup_clock(host);
+		if (ret) {
+			dev_err(host->dev,
+				"implementation specific clock setup failed\n");
+			goto err_clk_ciu;
+		}
+	}
+
 	if (!IS_ERR(host->pdata->rstc)) {
 		reset_control_assert(host->pdata->rstc);
 		usleep_range(10, 50);
