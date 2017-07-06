@@ -94,6 +94,7 @@
 			cpu-idle-states =<&CPU_SLEEP>;
 		};
 
+              /*
 		cpu4: cpu@4 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
@@ -129,6 +130,7 @@
 			cpu-release-addr = < 0x1 0xc0010230 >;
 			cpu-idle-states =<&CPU_SLEEP>;
 		};
+        */
 
 		cpu-map {
 			cluster0 {
@@ -145,6 +147,7 @@
 					cpu = <&cpu3>;
 				};
 			};
+            /*
 			cluster1 {
 				core0 {
 					cpu = <&cpu4>;
@@ -159,6 +162,7 @@
 					cpu = <&cpu7>;
 				};
 			};
+            */
 		};
 
 		idle-states {
@@ -178,19 +182,19 @@
 		interrupts = <0 IRQ_P0_PMUIRQ0 0>,
 			     <0 IRQ_P0_PMUIRQ1 0>,
 			     <0 IRQ_P0_PMUIRQ2 0>,
-			     <0 IRQ_P0_PMUIRQ3 0>,
+			     <0 IRQ_P0_PMUIRQ3 0>/*,
 			     <0 IRQ_P1_PMUIRQ0 0>,
 			     <0 IRQ_P1_PMUIRQ1 0>,
 			     <0 IRQ_P1_PMUIRQ2 0>,
-			     <0 IRQ_P1_PMUIRQ3 0>;
+			     <0 IRQ_P1_PMUIRQ3 0>*/;
 		interrupt-affinity = <&cpu0>,
 				     <&cpu1>,
 				     <&cpu2>,
-				     <&cpu3>;
-				     /*<&cpu4>,
+				     <&cpu3>/*,
+				     <&cpu4>,
 				     <&cpu5>,
 				     <&cpu6>,
-				     <&cpu7>;*/
+				     <&cpu7>*/;
 	};
 
 	refclk:oscillator {
