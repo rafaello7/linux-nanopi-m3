@@ -19,6 +19,7 @@
 /dts-v1/;
 //memreserve/ 0x7ed00000 0x00100000; /* OP-TEE SHM */
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/gpio/gpio.h>
 #include "s5p6818.dtsi"
 
 #define PMIC_PDATA_INIT(_id, _rname, _minuv,	\
@@ -131,7 +132,7 @@
 			nexell,drive_shift = <0x02>;
 			nexell,sample_dly = <0x00>;
 			nexell,sample_shift = <0x01>;
-			//pinctrl-0 = <&sdmmc1_cclk &sdmmc1_cmd &sdmmc1_bus4 &wifi_rf>;
+			mmc-pwrseq = <&wifi_powerseq>;
 			status = "okay";
 
             brcmf: bcrmf@1 {
@@ -140,25 +141,16 @@
             };
 		};
 
-        pinctrl@C0010000 {
-            wifi_rf: wifi-rf {      // wifi module power
-                nexell,pins = "gpiob-24";
-                nexell,pin-function = <1>;
-                nexell,pin-out = <1>;
-                nexell,pin-outlevel = <0>;
-                nexell,pin-pull = <2>;      // == off
-                nexell,pin-strength = <0>;
-            };
+		wifi_powerseq: wifi_powerseq  {
+			compatible = "mmc-pwrseq-simple";
+			reset-gpios = <&gpio_b 24 GPIO_ACTIVE_LOW>;
+			post-power-on-delay-ms = <10>;
+		};
 
-            bt_reset: bt-reset {    // bluetooth reset
-                nexell,pins = "gpiob-8";
-                nexell,pin-function = <1>;
-                nexell,pin-out = <1>;
-                nexell,pin-outlevel = <0>;
-                nexell,pin-pull = <2>;      // == off
-                nexell,pin-strength = <0>;
-            };
-        };
+		bt_powerseq  {
+			compatible = "mmc-pwrseq-simple";
+			reset-gpios = <&gpio_b 8 GPIO_ACTIVE_LOW>;
+		};
 
 		i2c3_gpio:i2c@0 {
 			compatible = "i2c-gpio";

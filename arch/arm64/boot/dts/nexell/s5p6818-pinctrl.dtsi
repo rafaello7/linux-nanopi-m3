@@ -68,12 +68,12 @@ pinctrl@C0010000 {
      *      PAD_FUNC_ALT2   2
      *      PAD_FUNC_ALT3   3
      *
-     *  pin-out
+     *  no control (PINCFG_TYPE_DIR)
      *      PAD_MODE_ALT    0
      *      PAD_MODE_IN     0
      *      PAD_MODE_OUT    1
      *
-     *  pin-outlevel
+     *  no control (PINCFG_TYPE_DAT)
      *      PAD_LEVEL_LOW   0
      *      PAD_LEVEL_HIGH  1
      *

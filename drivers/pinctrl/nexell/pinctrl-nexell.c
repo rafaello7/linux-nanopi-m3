@@ -38,8 +38,6 @@ static struct pin_config {
 } cfg_params[] = {
 	{"nexell,pin-pull", PINCFG_TYPE_PULL},
 	{"nexell,pin-strength", PINCFG_TYPE_DRV},
-	{"nexell,pin-out", PINCFG_TYPE_DIR},
-	{"nexell,pin-outlevel", PINCFG_TYPE_DAT}
 };
 
 /* Global list of devices (struct nexell_pinctrl_drv_data) */
