@@ -425,6 +425,11 @@
                 ev_end_offset = <0>;
             };
         };
+
+		rtc@c0010c00 {
+            status = "okay";
+		};
+
 	};	/*** soc ***/
 
 	panel: panel-simple {
