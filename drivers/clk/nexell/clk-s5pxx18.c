@@ -68,50 +68,6 @@ struct clk_dev_map {
 
 #define MAX_DIVIDER ((1 << 8) - 1) /* 256, align 2 */
 
-struct uartclkregs {
-    unsigned uartclkenb;
-    unsigned uartclkgen0l;
-};
-
-struct uart {
-    unsigned ulcon;
-    unsigned ucon;
-    unsigned ufcon;
-    unsigned umcon;
-    unsigned utrstat;   // 0x10
-    unsigned uerstat;
-    unsigned ufstat;
-    unsigned umstat;
-    unsigned utxh;      // 0x20
-    unsigned urxh;
-    unsigned ubrdiv;
-    unsigned ufracval;
-    unsigned uintp;     // 0x30
-    unsigned uints;
-    unsigned uintm;     // 0x38
-};
-
-void my_putstr1(const char*);
-
-void uart0_setup(void)
-{
-    volatile struct uartclkregs *uartclkregs0;
-    volatile struct uart *uart0;
-
-    uartclkregs0 = (struct uartclkregs*)ioremap(0xc00a9000, 0x1000);
-    uart0 = (struct uart*)ioremap(0xc00A1000, 0x1000);
-
-    pr_info("uart0_setup: uartclkregs0=%p uart0=%p\n",
-            uartclkregs0, uart0);
-    // UART0 clock set to 20MHz - source PLL2, divide by 25
-    uartclkregs0->uartclkgen0l = (79 << 5) | (2 << 2);
-    pr_info("uart0_setup: UART0 generator clock set to 20MHz\n");
-    // UART speed divider: 10 + 14/16
-    // Baud rate: 20MHz / (10 + 14/16) / 16
-    uart0->ubrdiv = 9;
-    uart0->ufracval = 14;
-    pr_info("uart0_setup: baud rate adjusted\n");
-}
 static inline void clk_dev_bclk(void *base, int on)
 {
 	struct clk_dev_map *reg = base;
@@ -321,8 +277,6 @@ static int dev_set_rate(struct clk_hw *hw, unsigned long rate)
 
 	rate = dev_round_rate(hw, rate);
 
-    pr_info("dev_set_rate: name=%s, clk_step=%d, div_src_0=%d, div_val_0=%d\n",
-            peri->name, peri->clk_step, peri->div_src_0, peri->div_val_0);
 	for (i = 0; peri->clk_step > i; i++) {
 		int s = (0 == i ? peri->div_src_0 : peri->div_src_1);
 		int d = (0 == i ? peri->div_val_0 : peri->div_val_1);
@@ -331,9 +285,7 @@ static int dev_set_rate(struct clk_hw *hw, unsigned long rate)
 			continue;
 
 		/* change rate */
-        pr_info("dev_set_rate: name=%s, step=%d, pll=%d, divider=%d\n",
-                peri->name, i, s, d);
-#if 1
+#ifdef CONFIG_EARLY_PRINTK
 		if (!strcmp(peri->name, "uart0"))
 			break;
 #endif
