@@ -510,10 +510,12 @@
 		simple-audio-card,mclk-fs = <256>;
 		simple-audio-card,name = "Jack";
 		simple-audio-card,widgets =
-			"Headphone", "Headphones";
+			"Headphone", "Headphones",
+			"Microphone", "Microphone";
 		simple-audio-card,routing =
 			"Headphones", "HPOL",
-			"Headphones", "HPOR";
+			"Headphones", "HPOR",
+			"MIC1", "Microphone";
 		status = "okay";
 
 		simple-audio-card,dai-link@0 {
