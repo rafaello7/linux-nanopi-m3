@@ -211,6 +211,7 @@ struct exynos_tmu_data {
 	struct regulator *regulator;
 	struct thermal_zone_device *tzd;
 	unsigned int ntrip;
+	bool isInitialized;
 
 	int (*tmu_initialize)(struct platform_device *pdev);
 	void (*tmu_control)(struct platform_device *pdev, bool on);
@@ -903,6 +904,14 @@ static int exynos_get_temp(void *p, int *temp)
 	if (!data || !data->tmu_read)
 		return -EINVAL;
 
+	if( ! data->isInitialized ) {
+		/* We are probably within thermal_zone_of_sensor_register call.
+		 * Return fake temperature, low enough to not trigger shutdown sequence
+		 * by thermal zone handler.
+		 */
+		*temp = 25 * MCELSIUS;
+		return 0;
+	}
 	mutex_lock(&data->lock);
 	clk_enable(data->clk);
 
@@ -1419,6 +1428,7 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 	}
 
 	exynos_tmu_control(pdev, true);
+	data->isInitialized = true;
 	return 0;
 
 err_thermal:
