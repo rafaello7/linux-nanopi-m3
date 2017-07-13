@@ -324,7 +324,15 @@
 		};
 
 		i2c_0:i2c@c00a4000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
 			status = "okay";
+
+			es8316_codec: es8316@11 {
+				#sound-dai-cells = <0>;
+				compatible = "everest,es8316";
+				reg = <0x11>;
+			};
 		};
 
 		i2c_1:i2c@c00a5000 {
@@ -434,6 +442,18 @@
 			status = "okay";
 		};
 
+		i2s_0:i2s@c0055000 {
+			#sound-dai-cells = <1>;
+			sample-rate = <48000>;
+			frame-bit = <32>;
+			status = "okay";
+		};
+
+		spdif_tx: spdiftx@c0059000 {
+			#sound-dai-cells = <1>;
+			status = "okay";
+		};
+
 	};	/*** soc ***/
 
 	panel: panel-simple {
@@ -451,6 +471,81 @@
 		port {
 			rgb_panel: endpoint {
 			};
+		};
+	};
+
+	spdif_out: spdif-out {
+		#sound-dai-cells = <0>;
+		compatible = "linux,spdif-dit";
+		status = "okay";
+	};
+
+	/* Audio jack output configured to use with Nexell driver. Not used.
+	 */
+	es8316_sound: es8316@i2s0 {
+		compatible = "nexell,nexell-es8316";
+		ch = <0>;
+		sample-rate = <48000>;
+		format = "S16";
+		hpin-support = <0>;
+		hpin-gpio = <&gpio_b 27 0>;
+		hpin-level = <1>;
+		status = "disabled";
+	};
+
+	/* HDMI output configured to use with Nexell driver. Not used also.
+	 *
+	 * Note that es8316_sound and spdif_sound cannot be enabled together
+	 * because of nexell-pcm device used by both.
+	 */
+	spdif_sound {
+		compatible = "nexell,spdif-transceiver";
+		sample_rate = <48000>;
+		format = "S16";
+		status = "disabled";
+	};
+
+	jack_sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,mclk-fs = <256>;
+		simple-audio-card,name = "Jack";
+		simple-audio-card,widgets =
+			"Headphone", "Headphones";
+		simple-audio-card,routing =
+			"Headphones", "HPOL",
+			"Headphones", "HPOR";
+		status = "okay";
+
+		simple-audio-card,dai-link@0 {
+		    format = "i2s";
+			cpu {
+				sound-dai = <&i2s_0 0>;
+		    };
+
+		    codec {
+				sound-dai = <&es8316_codec>;
+		    };
+		};
+	};
+
+	hdmi_sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,mclk-fs = <256>;
+		simple-audio-card,name = "HDMI";
+		simple-audio-card,widgets =
+			"Headphone", "TV Out";
+		simple-audio-card,routing =
+			"TV Out", "spdif-out";
+		status = "okay";
+
+		simple-audio-card,dai-link@0 {
+		    cpu {
+				sound-dai = <&spdif_tx 0>;
+		    };
+
+		    codec {
+				sound-dai = <&spdif_out>;
+		    };
 		};
 	};
 
