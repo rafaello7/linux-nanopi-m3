@@ -454,6 +454,10 @@
 			status = "okay";
 		};
 
+		adc:adc@c0053000 {
+			status = "okay";
+		};
+
 	};	/*** soc ***/
 
 	panel: panel-simple {
