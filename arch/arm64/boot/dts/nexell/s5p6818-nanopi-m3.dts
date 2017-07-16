@@ -133,18 +133,22 @@
 			nexell,sample_dly = <0x00>;
 			nexell,sample_shift = <0x01>;
 			mmc-pwrseq = <&wifi_powerseq>;
+			cap-sdio-irq;
 			status = "okay";
 
+			/* wifi definition for brcmfmac.ko module */
             brcmf: bcrmf@1 {
-                reg = <1>;
                 compatible = "brcm,bcm4329-fmac";
+                reg = <1>;
+				interrupt-parent = <&gpio_c>;
+				interrupts = <17 IRQ_TYPE_LEVEL_HIGH>;
             };
 		};
 
 		wifi_powerseq: wifi_powerseq  {
 			compatible = "mmc-pwrseq-simple";
 			reset-gpios = <&gpio_b 24 GPIO_ACTIVE_LOW>;
-			post-power-on-delay-ms = <10>;
+			post-power-on-delay-ms = <50>;
 		};
 
 		bt_powerseq  {
@@ -168,7 +172,7 @@
 			axp228@34 {
 				compatible = "x-powers,axp228";
 				reg = <0x34>;
-				interrupt-parent = <&alive_0>;
+				interrupt-parent = <&alive_0>;	// CFG_GPIO_PMIC_INTR
 				interrupts = <0x4 IRQ_TYPE_EDGE_FALLING>;
 				nx,id = <0>;
 				/* vdd_arm-supply = <&VCC1P1_ARM_PMIC>; */
@@ -593,6 +597,12 @@
 			gpios = <&gpio_b 12 GPIO_ACTIVE_LOW>;
 			linux,default-trigger = "mmc1";
 		};
+	};
+
+	wifi_bcm4329 { /* wifi definition for bcmdhd.ko module */
+		compatible = "nanopi,bcm4329";
+		interrupt-parent = <&gpio_c>;
+		interrupts = <17 IRQ_TYPE_LEVEL_HIGH>;
 	};
 };
 
