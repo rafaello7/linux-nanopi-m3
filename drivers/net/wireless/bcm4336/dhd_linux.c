@@ -3698,7 +3698,7 @@ void dhd_set_scb_probe(dhd_pub_t *dhd)
 
 	bcm_mkiovar("scb_probe", NULL, 0, iovbuf, sizeof(iovbuf));
 
-	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
+	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iovbuf, sizeof(iovbuf), FALSE, 0)) < 0)
 		DHD_ERROR(("%s: GET max_scb_probe failed\n", __FUNCTION__));
 
 	memcpy(&scb_probe, iovbuf, sizeof(wl_scb_probe_t));
