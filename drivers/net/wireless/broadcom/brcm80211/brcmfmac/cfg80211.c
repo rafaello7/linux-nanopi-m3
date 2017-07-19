@@ -5702,7 +5702,7 @@ static s32 wl_init_priv(struct brcmf_cfg80211_info *cfg)
 	s32 err = 0;
 
 	cfg->scan_request = NULL;
-	cfg->pwr_save = true;
+	cfg->pwr_save = !cfg->pub->settings->powersave_default_off;
 	cfg->active_scan = true;	/* we do active scan per default */
 	cfg->dongle_up = false;		/* dongle is not up yet */
 	err = brcmf_init_priv_mem(cfg);
@@ -6450,8 +6450,9 @@ static int brcmf_setup_wiphy(struct wiphy *wiphy, struct brcmf_if *ifp)
 				    BIT(NL80211_BSS_SELECT_ATTR_BAND_PREF) |
 				    BIT(NL80211_BSS_SELECT_ATTR_RSSI_ADJUST);
 
-	wiphy->flags |= WIPHY_FLAG_PS_ON_BY_DEFAULT |
-			WIPHY_FLAG_OFFCHAN_TX |
+	if( ! ifp->drvr->settings->powersave_default_off )
+		wiphy->flags |= WIPHY_FLAG_PS_ON_BY_DEFAULT;
+	wiphy->flags |= WIPHY_FLAG_OFFCHAN_TX |
 			WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL;
 	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_TDLS))
 		wiphy->flags |= WIPHY_FLAG_SUPPORTS_TDLS;

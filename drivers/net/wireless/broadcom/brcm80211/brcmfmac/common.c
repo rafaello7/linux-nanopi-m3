@@ -80,6 +80,10 @@ module_param_named(ignore_probe_fail, brcmf_ignore_probe_fail, int, 0);
 MODULE_PARM_DESC(ignore_probe_fail, "always succeed probe for debugging");
 #endif
 
+static int brcmf_powersave_default = -1;
+module_param_named(powersave_default, brcmf_powersave_default, int, 0);
+MODULE_PARM_DESC(powersave_default, "Set powersave default on/off on wiphy");
+
 static struct brcmfmac_platform_data *brcmfmac_pdata;
 struct brcmf_mp_global_t brcmf_mp_global;
 
@@ -319,6 +323,8 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
 		/* No platform data for this device, try OF (Open Firwmare) */
 		brcmf_of_probe(dev, bus_type, settings);
 	}
+	if( brcmf_powersave_default >= 0 )
+		settings->powersave_default_off = !brcmf_powersave_default;
 	return settings;
 }
 

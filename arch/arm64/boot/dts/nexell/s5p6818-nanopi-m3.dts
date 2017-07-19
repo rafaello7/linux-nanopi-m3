@@ -133,7 +133,6 @@
 			nexell,sample_dly = <0x00>;
 			nexell,sample_shift = <0x01>;
 			mmc-pwrseq = <&wifi_powerseq>;
-			cap-sdio-irq;
 			status = "okay";
 
 			/* wifi definition for brcmfmac.ko module */
@@ -142,6 +141,7 @@
                 reg = <1>;
 				interrupt-parent = <&gpio_c>;
 				interrupts = <17 IRQ_TYPE_LEVEL_HIGH>;
+				brcm,powersave-default-off;
             };
 		};
 

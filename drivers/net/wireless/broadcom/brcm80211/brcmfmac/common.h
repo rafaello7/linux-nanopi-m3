@@ -59,6 +59,7 @@ struct brcmf_mp_device {
 	int		fcmode;
 	bool		roamoff;
 	bool		ignore_probe_fail;
+	bool		powersave_default_off;
 	struct brcmfmac_pd_cc *country_codes;
 	union {
 		struct brcmfmac_sdio_pd sdio;
