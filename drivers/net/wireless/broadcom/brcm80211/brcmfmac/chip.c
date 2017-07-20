@@ -1215,6 +1215,14 @@ static bool brcmf_chip_cm3_set_active(struct brcmf_chip_priv *chip)
 	core = brcmf_chip_get_core(&chip->pub, BCMA_CORE_ARM_CM3);
 	brcmf_chip_resetcore(core, 0, 0, 0);
 
+	if( chip->pub.chip == BRCM_CC_43430_CHIP_ID && chip->pub.chiprev == 0 ) {
+		/* ap6212: fix occasional I/O timeout occuring after this reset.
+		 * Usually appropriate delay (~50ms) provides sdio_enable_func()
+		 * invoked after reset to enable F2. But sometimes (after rmmod
+		 * followed by insmod) the enable function returns immediately.
+		 */
+		usleep_range(40000, 60000);
+	}
 	return true;
 }
 
