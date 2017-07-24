@@ -1411,7 +1411,7 @@ struct dma_buf *nx_drm_gem_prime_export(struct drm_device *drm,
 	if (drm->driver->gem_prime_res_obj)
 		exp_info.resv = drm->driver->gem_prime_res_obj(obj);
 
-	return dma_buf_export(&exp_info);
+	return drm_gem_dmabuf_export(drm, &exp_info);
 }
 
 struct sg_table *nx_drm_gem_prime_get_sg_table(struct drm_gem_object *obj)
