@@ -30,6 +30,7 @@
 #include <media/v4l2-mc.h>
 
 #include <trace/events/v4l2.h>
+#include <linux/videodev2_nxp_media.h>
 
 /* Zero out the end of the struct pointed to by p.  Everything after, but
  * not including, the specified field is cleared. */
@@ -1164,6 +1165,8 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_PIX_FMT_NV61M:	descr = "Y/CrCb 4:2:2 (N-C)"; break;
 	case V4L2_PIX_FMT_NV12MT:	descr = "Y/CbCr 4:2:0 (64x32 MB, N-C)"; break;
 	case V4L2_PIX_FMT_NV12MT_16X16:	descr = "Y/CbCr 4:2:0 (16x16 MB, N-C)"; break;
+	case V4L2_PIX_FMT_NV24M:	descr = "Y/CbCr 4:4:4 (N-C)"; break;
+	case V4L2_PIX_FMT_NV42M:	descr = "Y/CrCb 4:4:4 (N-C)"; break;
 	case V4L2_PIX_FMT_YUV420M:	descr = "Planar YUV 4:2:0 (N-C)"; break;
 	case V4L2_PIX_FMT_YVU420M:	descr = "Planar YVU 4:2:0 (N-C)"; break;
 	case V4L2_PIX_FMT_YUV422M:	descr = "Planar YUV 4:2:2 (N-C)"; break;
@@ -1258,6 +1261,17 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 		case V4L2_PIX_FMT_SE401:	descr = "GSPCA SE401"; break;
 		case V4L2_PIX_FMT_S5C_UYVY_JPG:	descr = "S5C73MX interleaved UYVY/JPEG"; break;
 		case V4L2_PIX_FMT_MT21C:	descr = "Mediatek Compressed Format"; break;
+		case V4L2_PIX_FMT_DIV3:		descr = "DivX MPEG-4 (DIV3)"; break;
+		case V4L2_PIX_FMT_DIV4:		descr = "DivX MPEG-4 (DIV4)"; break;
+		case V4L2_PIX_FMT_DIV5:		descr = "DivX MPEG-4 (DIV5)"; break;
+		case V4L2_PIX_FMT_DIV6:		descr = "DivX MPEG-4 (DIV6)"; break;
+		case V4L2_PIX_FMT_DIVX:		descr = "DivX MPEG-4"; break;
+		case V4L2_PIX_FMT_RV8:		descr = "RealVideo v8"; break;
+		case V4L2_PIX_FMT_RV9:		descr = "RealVideo v9"; break;
+		case V4L2_PIX_FMT_WMV9:		descr = "Windows Media v9"; break;
+		case V4L2_PIX_FMT_WVC1:		descr = "SMPTE VC1 by Windows"; break;
+		case V4L2_PIX_FMT_FLV1:		descr = "Flash Video v1"; break;
+		case V4L2_PIX_FMT_THEORA:	descr = "Theora"; break;
 		default:
 			WARN(1, "Unknown pixelformat 0x%08x\n", fmt->pixelformat);
 			if (fmt->description[0])

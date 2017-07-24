@@ -462,6 +462,11 @@
 			status = "okay";
 		};
 
+		video-codec@c0080000 {
+			status = "okay";
+			sram = <0 0>;
+		};
+
 	};	/*** soc ***/
 
 	panel: panel-simple {
