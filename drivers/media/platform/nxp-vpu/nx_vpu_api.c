@@ -223,9 +223,9 @@ void NX_VPU_HWOff(void *dev)
 		NX_DbgMsg(DBG_POWER, ("NX_VPU_HWOff() ++\n"));
 
 		/* Initialize ISolate Register's */
-		pNPreCharge = gstIsolateBase + 4;
-		pNPowerUp = gstIsolateBase + 8;
-		pNPowerAck = gstIsolateBase + 12;
+		pNPreCharge = gstIsolateBase + 1;
+		pNPowerUp = gstIsolateBase + 2;
+		pNPowerAck = gstIsolateBase + 3;
 
 		/* Enter Coda Reset State */
 		WriteReg32(gstAliveBase,  0x3);

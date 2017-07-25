@@ -1352,10 +1352,6 @@ static int nx_vpu_remove(struct platform_device *pdev)
 	video_unregister_device(dev->vfd_dec);
 	v4l2_device_unregister(&dev->v4l2_dev);
 
-	reset_control_assert(dev->coda_c);
-	reset_control_assert(dev->coda_a);
-	reset_control_assert(dev->coda_p);
-
 	nx_vpu_deinit(dev);
 
 	mutex_destroy(&dev->vpu_mutex);
