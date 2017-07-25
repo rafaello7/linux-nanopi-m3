@@ -467,6 +467,9 @@
 			sram = <0 0>;
 		};
 
+		scaler@c0066000 {
+			status = "okay";
+		};
 	};	/*** soc ***/
 
 	panel: panel-simple {

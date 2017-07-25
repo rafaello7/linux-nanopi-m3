@@ -492,6 +492,14 @@ config VEXPRESS_SYSCFG
 	  bus. System Configuration interface is one of the possible means
 	  of generating transactions on this bus.
 
+config NX_SCALER
+	tristate "Nexell s5pxx18 series memory to memory scaler"
+	default n
+	---help---
+	  This option enables support for scaling for Nexell s5pxx18 serise
+	  SoC. Scaler reads an image from the memory and writes the image to
+	  the memory after up/down scaling.
+
 config PANEL
 	tristate "Parallel port LCD/Keypad Panel support"
 	depends on PARPORT
