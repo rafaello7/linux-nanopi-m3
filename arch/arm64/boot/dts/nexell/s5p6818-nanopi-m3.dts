@@ -67,6 +67,8 @@
 
 		serial1:serial@c00a0000 {
 			status ="okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&serial1_pin &serial1_flow>;
 		};
 
 		amba {
@@ -145,15 +147,14 @@
             };
 		};
 
+		/* FIXME: bluetooth reset is piggybacked here although their data flow
+		 * goes through serial1 */
 		wifi_powerseq: wifi_powerseq  {
 			compatible = "mmc-pwrseq-simple";
-			reset-gpios = <&gpio_b 24 GPIO_ACTIVE_LOW>;
+			reset-gpios =
+				<&gpio_b 24 GPIO_ACTIVE_LOW		/* wifi */
+				&gpio_b 8 GPIO_ACTIVE_LOW>;		/* bluetooth */
 			post-power-on-delay-ms = <50>;
-		};
-
-		bt_powerseq  {
-			compatible = "mmc-pwrseq-simple";
-			reset-gpios = <&gpio_b 8 GPIO_ACTIVE_LOW>;
 		};
 
 		i2c3_gpio:i2c@0 {
