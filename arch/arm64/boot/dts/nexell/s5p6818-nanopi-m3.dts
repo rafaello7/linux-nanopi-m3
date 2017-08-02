@@ -105,19 +105,19 @@
 			};
 		};
 
-		dw_mmc_0:dw_mmc@c0062000 {
-			num-slots = <1>;
-			bus-width = <4>;
-			cap-sd-highspeed;
-			clock-frequency = <100000000>;
-			card-detect-delay = <200>;
-			disable-wp;
-			cd-gpios = <&alive_0 1 0>;
-			cd-inverted;
-			nexell,drive_dly = <0x0>;
-			nexell,drive_shift = <0x02>;
-			nexell,sample_dly = <0x00>;
-			nexell,sample_shift = <0x01>;
+		dw_mmc_0:dw_mmc@c0062000 {			// mappings from kernel 3.x:
+			num-slots = <1>;				// num_slots, not initialized
+			bus-width = <4>;				// MMC_CAP_4_BIT_DATA
+			cap-sd-highspeed;				// DW_MCI_QUIRK_HIGHSPEED
+			cap-mmc-highspeed;				// also DW_MCI_QUIRK_HIGHSPEED
+			clock-frequency = <100000000>;	// bus_hz: 100 * 1000 * 1000
+			card-detect-delay = <200>;		// detect_delay_ms
+			disable-wp;						// write protect: -> get_ro; feature not available for micro SD
+			cd-gpios = <&alive_0 1 GPIO_ACTIVE_LOW>; // card detect: CFG_SDMMC0_DETECT_IO == PAD_GPIO_ALV + 1
+			nexell,drive_dly = <0x0>;		// DW_MMC_DRIVE_DELAY(0)
+			nexell,drive_shift = <0x02>;	// DW_MMC_DRIVE_PHASE(2)
+			nexell,sample_dly = <0x00>;		// DW_MMC_SAMPLE_DELAY(0)
+			nexell,sample_shift = <0x01>;	// DW_MMC_SAMPLE_PHASE(1)
 			status = "okay";
 		};
 
