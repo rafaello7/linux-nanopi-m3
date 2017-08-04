@@ -128,7 +128,6 @@
 			clock-frequency = <100000000>;
 			card-detect-delay = <200>;
 			non-removable;
-			disable-wp;
             keep-power-in-suspend;
 			nexell,drive_dly = <0x0>;
 			nexell,drive_shift = <0x02>;
@@ -145,6 +144,25 @@
 				interrupts = <17 IRQ_TYPE_LEVEL_HIGH>;
 				brcm,powersave-default-off;
             };
+		};
+
+		dw_mmc_2:dw_mmc@c0069000 {
+			num-slots = <1>;				// num_slots, not initialized
+			bus-width = <4>;				// MMC_CAP_4_BIT_DATA
+			cap-sd-highspeed;				// DW_MCI_QUIRK_HIGHSPEED
+			cap-mmc-highspeed;				// also DW_MCI_QUIRK_HIGHSPEED
+			sd-uhs-ddr50;					// MMC_CAP_UHS_DDR50
+			cap-mmc-hw-reset;				// MMC_CAP_HW_RESET
+			clock-frequency = <200000000>;	// bus_hz: 200 * 1000 * 1000
+			card-detect-delay = <200>;		// detect_delay_ms
+			non-removable;					// MMC_CAP_NONREMOVABLE
+			broken-cd;
+			cd-gpios = <&gpio_c 24 GPIO_ACTIVE_LOW>; // card detect: CFG_SDMMC2_DETECT_IO == PAD_GPIO_C + 24
+			nexell,drive_dly = <0x0>;		// DW_MMC_DRIVE_DELAY(0)
+			nexell,drive_shift = <0x03>;	// DW_MMC_DRIVE_PHASE(3)
+			nexell,sample_dly = <0x00>;		// DW_MMC_SAMPLE_DELAY(0)
+			nexell,sample_shift = <0x02>;	// DW_MMC_SAMPLE_PHASE(2)
+			status = "okay";
 		};
 
 		/* FIXME: bluetooth reset is piggybacked here although their data flow
