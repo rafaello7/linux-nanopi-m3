@@ -23,88 +23,16 @@
 
 #include "s5pxx18_drm_dp.h"
 
-struct hdmi_reg_tg {
-	u8 cmd;
-	u8 h_fsz_l;
-	u8 h_fsz_h;
-	u8 hact_st_l;
-	u8 hact_st_h;
-	u8 hact_sz_l;
-	u8 hact_sz_h;
-	u8 v_fsz_l;
-	u8 v_fsz_h;
-	u8 vsync_l;
-	u8 vsync_h;
-	u8 vsync2_l;
-	u8 vsync2_h;
-	u8 vact_st_l;
-	u8 vact_st_h;
-	u8 vact_sz_l;
-	u8 vact_sz_h;
-	u8 field_chg_l;
-	u8 field_chg_h;
-	u8 vact_st2_l;
-	u8 vact_st2_h;
-	u8 vact_st3_l;
-	u8 vact_st3_h;
-	u8 vact_st4_l;
-	u8 vact_st4_h;
-	u8 vsync_top_hdmi_l;
-	u8 vsync_top_hdmi_h;
-	u8 vsync_bot_hdmi_l;
-	u8 vsync_bot_hdmi_h;
-	u8 field_top_hdmi_l;
-	u8 field_top_hdmi_h;
-	u8 field_bot_hdmi_l;
-	u8 field_bot_hdmi_h;
-	u8 tg_3d;
+enum {
+	RES_FIELD_INTERLACED	= 0x1,
+	RES_FIELD_NVSYNC		= 0x2,
+	RES_FIELD_NHSYNC		= 0x4
 };
-
-struct hdmi_reg_core {
-	u8 h_blank[2];
-	u8 v2_blank[2];
-	u8 v1_blank[2];
-	u8 v_line[2];
-	u8 h_line[2];
-	u8 hsync_pol[1];
-	u8 vsync_pol[1];
-	u8 int_pro_mode[1];
-	u8 v_blank_f0[2];
-	u8 v_blank_f1[2];
-	u8 h_sync_start[2];
-	u8 h_sync_end[2];
-	u8 v_sync_line_bef_2[2];
-	u8 v_sync_line_bef_1[2];
-	u8 v_sync_line_aft_2[2];
-	u8 v_sync_line_aft_1[2];
-	u8 v_sync_line_aft_pxl_2[2];
-	u8 v_sync_line_aft_pxl_1[2];
-	u8 v_blank_f2[2];	/* for 3D mode */
-	u8 v_blank_f3[2];	/* for 3D mode */
-	u8 v_blank_f4[2];	/* for 3D mode */
-	u8 v_blank_f5[2];	/* for 3D mode */
-	u8 v_sync_line_aft_3[2];
-	u8 v_sync_line_aft_4[2];
-	u8 v_sync_line_aft_5[2];
-	u8 v_sync_line_aft_6[2];
-	u8 v_sync_line_aft_pxl_3[2];
-	u8 v_sync_line_aft_pxl_4[2];
-	u8 v_sync_line_aft_pxl_5[2];
-	u8 v_sync_line_aft_pxl_6[2];
-	u8 vact_space_1[2];
-	u8 vact_space_2[2];
-	u8 vact_space_3[2];
-	u8 vact_space_4[2];
-	u8 vact_space_5[2];
-	u8 vact_space_6[2];
-};
-
-#define	RES_FIELD_INTERLACED	(1<<0)
 
 struct hdmi_res_mode {
 	int pixelclock;
-	int h_as, h_sw, h_bp, h_fp, h_si;
-	int v_as, v_sw, v_bp, v_fp, v_si;
+	int h_as, h_sw, h_bp, h_fp;
+	int v_as, v_sw, v_bp, v_fp;
 	u16 refresh;
 	unsigned long flags;
 	char *name;
@@ -118,10 +46,7 @@ enum color_range {
 struct hdmi_preset {
 	struct hdmi_res_mode mode;
 	enum hdmi_picture_aspect aspect_ratio;
-	struct hdmi_reg_core core;
-	struct hdmi_reg_tg tg;
 	bool dvi_mode;
-	enum color_range  color_range;
 	u8 vic;
 };
 
@@ -145,7 +70,6 @@ struct hdmi_conf {
 	const struct hdmi_preset *preset;
 	const struct hdmi_format *format;
 	const u8 *phy_data;
-	bool support;
 };
 
 /* VENDOR header */
@@ -198,11 +122,9 @@ int nx_dp_device_hdmi_register(struct device *dev,
 
 u32  nx_dp_hdmi_hpd_event(int irq);
 bool nx_dp_hdmi_is_connected(void);
-bool nx_dp_hdmi_mode_valid(struct videomode *vm, int refresh, int pixelclock);
-bool nx_dp_hdmi_mode_get(int width, int height, int refresh,
-			struct videomode *vm);
+bool nx_dp_hdmi_mode_valid(const struct drm_display_mode*);
 int nx_dp_hdmi_mode_set(struct nx_drm_device *display,
-			struct drm_display_mode *mode, struct videomode *vm,
+			struct drm_display_mode *mode,
 			bool dvi_mode, int q_range);
 int  nx_dp_hdmi_mode_commit(struct nx_drm_device *display, int crtc);
 void nx_dp_hdmi_power(struct nx_drm_device *display, bool on);

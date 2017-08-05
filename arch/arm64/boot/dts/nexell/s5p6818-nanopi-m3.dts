@@ -428,7 +428,7 @@
 
         dp_drm_hdmi: display_drm_hdmi {
             ddc-i2c-bus = <&i2c_1>;
-            //enable-gpios = <&gpio_a 21 0>;
+            q_range = <1>;
             status = "ok";
         };
 

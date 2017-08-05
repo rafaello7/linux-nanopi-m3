@@ -80,8 +80,12 @@ static void panel_hdmi_dump_edid_modes(struct drm_connector *connector,
 {
 	struct drm_display_mode *mode, *t;
 
-	if (!num_modes || !dump)
+	if( !dump )
 		return;
+	if( !num_modes ) {
+		DRM_INFO("EDID list empty\n");
+		return;
+	}
 
 	list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
 		DRM_DEBUG_KMS("EDID [%4d x %4d %3d fps, 0x%08x(%s), %d] %s\n",
@@ -95,25 +99,22 @@ static void panel_hdmi_dump_edid_modes(struct drm_connector *connector,
 static int panel_hdmi_preferred_modes(struct device *dev,
 			struct drm_connector *connector, int num_modes)
 {
-	struct drm_display_mode *mode;
+	static int lpref_width, lpref_height, lpref_refresh, lpref_flags;
+	struct drm_display_mode *mode, *oldpref, *newpref;
 	struct hdmi_context *ctx = dev_get_drvdata(dev);
 	struct nx_drm_panel *panel = &ctx->display->panel;
 	struct videomode *vm = &panel->vm;
 	struct drm_display_mode *t;
-	bool err = false;
+	bool prefShown = false;
 
 	DRM_DEBUG_KMS("enter %d:%d:%d\n",
 		vm->hactive, vm->vactive, panel->vrefresh);
-
-	err = nx_dp_hdmi_mode_get(vm->hactive,
-				vm->vactive, panel->vrefresh, vm);
-	if (false == err)
-		return 0;
 
 	/*
 	 * if not support EDID, use default resolution
 	 */
 	if (!num_modes) {
+		DRM_ERROR("no mode got from EDID\n");
 		mode = drm_mode_create(connector->dev);
 		if (!mode) {
 			DRM_ERROR("fail : create a new display mode !\n");
@@ -133,16 +134,47 @@ static int panel_hdmi_preferred_modes(struct device *dev,
 	}
 
 	/*
-	 * set preferred mode form EDID modes
+	 * set preferred mode from EDID modes
 	 */
+	oldpref = newpref = NULL;
 	list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
-		mode->type &= ~DRM_MODE_TYPE_PREFERRED;
+		if( mode->type & DRM_MODE_TYPE_PREFERRED ) {
+			if(mode->hdisplay != lpref_width ||
+					mode->vdisplay != lpref_height ||
+					mode->vrefresh != lpref_refresh ||
+					mode->flags != lpref_flags)
+			{
+				DRM_INFO("preferred mode from EDID: %dx%d%c@%d\n",
+					mode->hdisplay, mode->vdisplay,
+					mode->flags & DRM_MODE_FLAG_INTERLACE ? 'i' : 'p',
+					mode->vrefresh);
+				lpref_width = mode->hdisplay;
+				lpref_height = mode->vdisplay;
+				lpref_refresh = mode->vrefresh;
+				lpref_flags = mode->flags;
+				prefShown = true;
+			}
+			oldpref = mode;
+		}
 		if (mode->hdisplay == vm->hactive &&
 			mode->vdisplay == vm->vactive &&
-			mode->vrefresh == panel->vrefresh) {
-			mode->type |= DRM_MODE_TYPE_PREFERRED;
-			break;
+			mode->vrefresh == panel->vrefresh
+			&& !(mode->flags & DRM_MODE_FLAG_INTERLACE) ==
+				!(vm->flags & DISPLAY_FLAGS_INTERLACED))
+		{
+			newpref = mode;
 		}
+	}
+	if( newpref != NULL && oldpref != newpref ) {
+		if( prefShown ) {
+			DRM_INFO("override preferred mode by %dx%d%c@%d\n",
+					vm->hactive, vm->vactive,
+					vm->flags & DISPLAY_FLAGS_INTERLACED ? 'i' : 'p',
+					panel->vrefresh);
+		}
+		newpref->type |= DRM_MODE_TYPE_PREFERRED;
+		if( oldpref != NULL )
+			oldpref->type &= ~DRM_MODE_TYPE_PREFERRED;
 	}
 	return num_modes;
 }
@@ -176,28 +208,26 @@ static int panel_hdmi_get_modes(struct device *dev,
 static int panel_hdmi_check_mode(struct device *dev,
 			struct drm_display_mode *mode)
 {
-	int pixelclock = mode->clock * 1000;
-	struct videomode vm;
 	bool ret;
 
-	drm_display_mode_to_videomode(mode, &vm);
-
-	ret = nx_dp_hdmi_mode_valid(&vm, mode->vrefresh, pixelclock);
+	ret = nx_dp_hdmi_mode_valid(mode);
 	if (!ret)
 		return MODE_BAD;
 
-	DRM_DEBUG_KMS("OK MODE %d x %d mm, %s, %d hz %d fps\n",
+	DRM_DEBUG_KMS("OK MODE %d x %d mm, %s, %d khz %d fps\n",
 		mode->width_mm, mode->height_mm,
 		mode->flags & DRM_MODE_FLAG_INTERLACE ?
-		"interlace" : "progressive", pixelclock,
+		"interlace" : "progressive", mode->clock,
 		mode->vrefresh);
 	DRM_DEBUG_KMS("ha:%d, hf:%d, hb:%d, hs:%d\n",
-		vm.hactive, vm.hfront_porch,
-		vm.hback_porch, vm.hsync_len);
+		mode->hdisplay, mode->hsync_start - mode->hdisplay,
+		mode->htotal - mode->hsync_end,
+		mode->hsync_end - mode->hsync_start);
 	DRM_DEBUG_KMS("va:%d, vf:%d, vb:%d, vs:%d\n",
-		vm.vactive, vm.vfront_porch,
-		vm.vback_porch, vm.vsync_len);
-	DRM_DEBUG_KMS("flags:0x%x\n", vm.flags);
+		mode->vdisplay, mode->vsync_start - mode->vdisplay,
+		mode->vtotal - mode->vsync_end,
+		mode->vsync_end - mode->vsync_start);
+	DRM_DEBUG_KMS("flags:0x%x\n", mode->flags);
 
 	return MODE_OK;
 }
@@ -216,11 +246,10 @@ void panel_hdmi_mode_set(struct device *dev,
 	struct hdmi_context *ctx = dev_get_drvdata(dev);
 	struct nx_drm_device *display = ctx->display;
 	struct hdmi_resource *hdmi = ctx_to_hdmi(ctx);
-	struct videomode *vm = &display->panel.vm;
 
 	DRM_DEBUG_KMS("enter\n");
 
-	nx_dp_hdmi_mode_set(display, mode, vm, hdmi->dvi_mode, ctx->q_range);
+	nx_dp_hdmi_mode_set(display, mode, hdmi->dvi_mode, ctx->q_range);
 }
 
 static void panel_hdmi_commit(struct device *dev)
@@ -409,7 +438,8 @@ static int panel_hdmi_parse_dt_hdmi(struct platform_device *pdev,
 
 		parse_read_prop(np, "width", vm->hactive);
 		parse_read_prop(np, "height", vm->vactive);
-		parse_read_prop(np, "flags", vm->flags);
+		vm->flags = of_property_read_bool(np, "interlaced") ?
+			DISPLAY_FLAGS_INTERLACED : 0;
 		parse_read_prop(np, "refresh", panel->vrefresh);
 	}
 

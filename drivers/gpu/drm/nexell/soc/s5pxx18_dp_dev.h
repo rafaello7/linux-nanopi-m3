@@ -190,8 +190,8 @@ struct dp_lvds_dev {
 };
 
 struct dp_hdmi_dev {
-	int preset_num;
-	void *preset_data;
+	int color_range;
+	const void *hdmiconf;
 };
 
 struct dp_mipi_xfer {
