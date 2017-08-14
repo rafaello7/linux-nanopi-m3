@@ -55,10 +55,10 @@
 			uart3:uart@c00ab000 { clock-frequency = <147500000>; };
 			uart4:uart@c006e000 { clock-frequency = <147500000>; };
 			uart5:uart@c0084000 { clock-frequency = <147500000>; };
-			pwm0:pwm0@c00ba000 { clock-frequency = <100000000>; };
+			/*pwm0:pwm0@c00ba000 { clock-frequency = <100000000>; };*/
 			i2c0:i2c@c00ae000  { clock-frequency = <200000000>; };
 			i2c1:i2c@c00af000  { clock-frequency = <200000000>; };
-			vip1:vip@c00c2000 { src-force = <4>; };
+			vip0:vip@c00c1000 { src-force = <4>; };
 		};
 
 		serial0:serial@c00a1000 {
@@ -369,46 +369,68 @@
 			status = "okay";
 		};
 
-		vip_1:vip@c0064000 {
+		vip_0:vip@c0063000 {
 			status = "okay";
 		};
 
-		clipper_1:clipper1@c0064000 {
+		clipper_0:clipper0@c0063000 {
 			status = "okay";
-			pwms = <&pwm 1 41 0>; /* 1000000000/41 */
+			// pwms for power enable_seq, NX_ACTION_TYPE_CLOCK
+			// params: &pwm <timer num> <period ns> <flags>
+			//pwms = <&pwm 1 41 0>; /* 41 ns; need 24 MHz */
 			interface_type = <NX_CAPTURE_INTERFACE_PARALLEL>;
 			pinctrl-names = "default";
-			pinctrl-0 = <&vid1_data_clk &vid1_sync> ;
+			pinctrl-0 = <&vid0_data_clk &vid0_sync>;
 			port = <0>;
 			external_sync = <0>;
-			data_order = <NX_VIN_Y0CBY1CR>;
+			data_order = <NX_VIN_CBY0CRY1>;
 			interlace = <0>;
-			regulator_names = "axp22_dldo2";
-			regulator_voltages = <1800000>;
+			h_frontporch   = <0>;
+			h_syncwidth    = <0>;
+			h_backporch    = <2>;
+			v_frontporch   = <0>;
+			v_syncwidth    = <0>;
+			v_backporch    = <13>;
+			//regulator_names = "axp22_dldo2";
+			//regulator_voltages = <1800000>;
 
-			gpios = <&gpio_c 4 0
-				 &gpio_c 5 0
-			         &gpio_c 6 0>;
+			// gpios for power enable_seq, NX_ACTION_TYPE_GPIO
+			gpios = <&gpio_b 14 0
+				&gpio_b 16 0>;
 
 			sensor {
 				type = <NX_CAPTURE_SENSOR_I2C>;
-				i2c_name = "SP2518";
+				i2c_name = "ov5640";
 				i2c_adapter = <0>;
-				addr = <0x30>;
+				addr = <0x3c>;
 			};
 
 			power {
+				// NX_ACTION_TYPE_GPIO: <gpios idx> <value> <delay ms> [<value> <delay ms>...]
+				// NX_ACTION_TYPE_CLOCK: <pwms idx> <enable> <delay ms> [<enable> <delay ms>...]
+#if 1
 				enable_seq = <
-				NX_ACTION_START NX_ACTION_TYPE_GPIO 2 1 0 NX_ACTION_END
-				NX_ACTION_START NX_ACTION_TYPE_PMIC 0 0 NX_ACTION_END
-				NX_ACTION_START NX_ACTION_TYPE_PMIC 1 0 NX_ACTION_END
-				NX_ACTION_START NX_ACTION_TYPE_GPIO 0 0 0 1 0 NX_ACTION_END
-				NX_ACTION_START NX_ACTION_TYPE_CLOCK 1 10 NX_ACTION_END
+				NX_ACTION_START NX_ACTION_TYPE_GPIO 0 1 1 0 0 NX_ACTION_END
+				NX_ACTION_START NX_ACTION_TYPE_GPIO 1 0 1 1 1 NX_ACTION_END
+				>;
+#else
+				enable_seq = <
+				NX_ACTION_START NX_ACTION_TYPE_GPIO 0 1 0 NX_ACTION_END
+				NX_ACTION_START NX_ACTION_TYPE_CLOCK 0 1 1 NX_ACTION_END
 				NX_ACTION_START NX_ACTION_TYPE_GPIO 0 0 0 NX_ACTION_END
-				NX_ACTION_START NX_ACTION_TYPE_GPIO 1 1 0 0 1 NX_ACTION_END
-				NX_ACTION_START NX_ACTION_TYPE_GPIO 1 1 100 NX_ACTION_END
+				NX_ACTION_START NX_ACTION_TYPE_GPIO 1 0 1 1 1 NX_ACTION_END
+				>;
+#endif
+
+				disable_seq = <
+				NX_ACTION_START NX_ACTION_TYPE_GPIO 0 1 0 NX_ACTION_END
+				NX_ACTION_START NX_ACTION_TYPE_GPIO 1 0 0 NX_ACTION_END
 				>;
 			};
+		};
+
+		decimator_0:decimator0@c0063000 {
+			status = "okay";
 		};
 
 		dp_drm: display_drm {

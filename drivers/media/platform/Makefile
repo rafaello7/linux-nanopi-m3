@@ -64,6 +64,8 @@ obj-$(CONFIG_VIDEO_RCAR_VIN)		+= rcar-vin/
 
 obj-$(CONFIG_VIDEO_ATMEL_ISC)		+= atmel/
 
+obj-$(CONFIG_VIDEO_NEXELL)		+= nexell/
+
 obj-$(CONFIG_VIDEO_NEXELL_CODEC)	+= nxp-vpu/
 
 ccflags-y += -I$(srctree)/drivers/media/i2c

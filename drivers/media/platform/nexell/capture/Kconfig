@@ -1,0 +1,18 @@
+config VIDEO_NEXELL_MIPI_CSI
+	tristate "Enable camera MIPI CSI interface"
+	default n
+
+config VIDEO_NEXELL_CLIPPER
+	tristate "Enable capture clipper video device"
+	default m
+	---help---
+	  Say y here to enable Nexell S5Pxx18 series VIP clipper video device.
+	  Clipper video device can crop source crop and has memory interface.
+	  If you want to enable only clipper subdev, don't check this.
+
+config VIDEO_NEXELL_DECIMATOR
+	tristate "Enable capture decimator video device"
+	default m
+	---help---
+	  Say y here to enable Nexell S5Pxx18 series VIP decimator video device.
+	  Decimator video device can scale down and has memory interface.
