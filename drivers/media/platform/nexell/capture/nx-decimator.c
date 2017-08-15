@@ -508,6 +508,7 @@ static int init_v4l2_subdev(struct nx_decimator *me)
 	pads[NX_DECIMATOR_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	pads[NX_DECIMATOR_PAD_SOURCE_MEM].flags = MEDIA_PAD_FL_SOURCE;
 
+	entity->function = MEDIA_ENT_F_CAM_SENSOR;
 	entity->ops = &nx_decimator_media_ops;
 	ret = media_entity_pads_init(entity, NX_DECIMATOR_PAD_MAX, pads);
 	if (ret < 0) {
@@ -528,40 +529,47 @@ static int register_v4l2(struct nx_decimator *me)
 
 	ret = nx_v4l2_register_subdev(&me->subdev);
 	if (ret)
-		BUG();
+		return ret;
 
 	snprintf(dev_name, sizeof(dev_name), "VIDEO DECIMATOR%d", me->module);
 	video = nx_video_create(dev_name, NX_VIDEO_TYPE_CAPTURE,
 				    nx_v4l2_get_v4l2_device());
 	if (!video)
-		BUG();
+		goto err_unregister_me;
 
 	ret = media_create_pad_link(entity, NX_DECIMATOR_PAD_SOURCE_MEM,
 				       &video->vdev.entity, 0, 0);
 	if (ret < 0)
-		BUG();
+		goto err_cleanup_video;
 
 	me->vbuf_obj.video = video;
 
 	ret = setup_link(&entity->pads[NX_DECIMATOR_PAD_SOURCE_MEM],
 			&video->vdev.entity.pads[0]);
 	if (ret)
-		BUG();
+		goto err_cleanup_video;
 
 	clipper = nx_v4l2_get_subdev("nx-clipper");
 	if (!clipper) {
 		dev_err(&me->pdev->dev, "can't get clipper subdev\n");
-		return -1;
+		ret = -ENODEV;
+		goto err_cleanup_video;
 	}
 
 	ret = media_create_pad_link(&clipper->entity, 2, entity, 0, 0);
 	if (ret)
-		BUG();
+		goto err_cleanup_video;
 
 	ret = setup_link(&clipper->entity.pads[2],
 			&entity->pads[NX_DECIMATOR_PAD_SINK]);
-
+	if (ret)
+		goto err_cleanup_video;
 	return 0;
+err_cleanup_video:
+	nx_video_cleanup(video);
+err_unregister_me:
+	v4l2_device_unregister_subdev(&me->subdev);
+	return ret;
 }
 
 static void unregister_v4l2(struct nx_decimator *me)
@@ -601,15 +609,16 @@ static int nx_decimator_probe(struct platform_device *pdev)
 		WARN_ON(1);
 		return -ENOMEM;
 	}
+	me->pdev = pdev;
+
+	ret = nx_decimator_parse_dt(pdev, me);
+	if (ret)
+		return ret;
 
 	if (!nx_vip_is_valid(me->module)) {
 		dev_err(dev, "NX VIP %d is not valid\n", me->module);
 		return -ENODEV;
 	}
-
-	ret = nx_decimator_parse_dt(pdev, me);
-	if (ret)
-		return ret;
 
 	init_me(me);
 
@@ -621,7 +630,6 @@ static int nx_decimator_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	me->pdev = pdev;
 	platform_set_drvdata(pdev, me);
 
 	return 0;
