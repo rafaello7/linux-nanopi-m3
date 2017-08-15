@@ -51,6 +51,10 @@
 #include "nx-vip-primitive.h"
 #include "nx-vip.h"
 
+#ifdef CONFIG_VIDEO_NEXELL_CLIPPER_MODULE
+#define CONFIG_VIDEO_NEXELL_CLIPPER
+#endif
+
 #define NX_CLIPPER_DEV_NAME	"nx-clipper"
 
 /* #define DEBUG_SYNC */
@@ -192,6 +196,9 @@ struct nx_clipper {
 #endif
 	/* for suspend */
 	struct nx_video_buffer *last_buf;
+
+	struct i2c_client *client;
+	struct kobject *sysfs_kobj;
 };
 
 #ifdef DEBUG_SYNC
@@ -1561,9 +1568,9 @@ static ssize_t camera_sensor_show_common(struct device *dev,
 	at = &attr->attr;
 
 	if (!strlen(camera_sensor_info[module].name))
-		return scnprintf(*buf, PAGE_SIZE, "no exist");
+		return scnprintf(*buf, PAGE_SIZE, "no exist\n");
 	else
-		return scnprintf(*buf, PAGE_SIZE, "is_mipi:%d,name:%s",
+		return scnprintf(*buf, PAGE_SIZE, "is_mipi:%d,name:%s\n",
 				 camera_sensor_info[module].is_mipi,
 				 camera_sensor_info[module].name);
 }
@@ -1626,13 +1633,21 @@ static int create_sysfs_for_camera_sensor(struct nx_clipper *me,
 	}
 
 	ret = sysfs_create_file(kobj, camera_sensor_attrs[me->module]);
-	if (ret) {
+	if (ret == 0 ) {
+		me->sysfs_kobj = kobj;
+	}else{
 		dev_err(&me->pdev->dev, "failed to sysfs_create_file for module %d\n",
 			me->module);
 		kobject_put(kobj);
 	}
 
 	return 0;
+}
+
+static void remove_sysfs_for_camera_sensor(struct nx_clipper *me)
+{
+	sysfs_remove_file(me->sysfs_kobj, camera_sensor_attrs[me->module]);
+	kobject_put(me->sysfs_kobj);
 }
 
 static int init_sensor_media_entity(struct nx_clipper *me,
@@ -1664,7 +1679,6 @@ static int register_sensor_subdev(struct nx_clipper *me)
 	int ret;
 	struct i2c_adapter *adapter;
 	struct v4l2_subdev *sensor;
-	struct i2c_client *client;
 	struct media_entity *input;
 	u32 pad;
 	struct nx_v4l2_i2c_board_info *info = &me->sensor_info;
@@ -1679,39 +1693,37 @@ static int register_sensor_subdev(struct nx_clipper *me)
 	if( ret )
 		dev_warn(&me->pdev->dev, "module %s request error %d\n",
 				info->board_info.type, ret);
-	client = i2c_new_device(adapter, &info->board_info);
-	if (client == NULL || client->dev.driver == NULL) {
-		if( client != NULL )
-			dev_err(&me->pdev->dev, "no driver for %s\n",
-					info->board_info.type);
-		else
-			dev_err(&me->pdev->dev, "unable to get i2c bus for %s\n",
+	me->client = i2c_new_device(adapter, &info->board_info);
+	if( me->client == NULL ) {
+		dev_err(&me->pdev->dev, "unable to get i2c bus for %s\n",
+				info->board_info.type);
+		ret = -ENODEV;
+		goto err_put_adap;
+	}
+	if( me->client->dev.driver == NULL) {
+		dev_err(&me->pdev->dev, "no driver for %s\n",
 					info->board_info.type);
 		ret = -ENODEV;
-		goto error;
+		goto err_unregister_client;
 	}
 
-	if (!try_module_get(client->dev.driver->owner)) {
-		ret = -ENODEV;
-		goto error;
-	}
-	sensor = i2c_get_clientdata(client);
+	sensor = i2c_get_clientdata(me->client);
 	sensor->host_priv = info;
 
 	ret = create_sysfs_for_camera_sensor(me, info);
 	if (ret)
-		goto error;
+		goto err_unregister_client;
 
 	ret = init_sensor_media_entity(me, sensor);
 	if (ret) {
 		dev_err(&me->pdev->dev, "failed to init sensor media entity\n");
-		goto error;
+		goto err_sysfs_remove;
 	}
 
 	ret  = nx_v4l2_register_subdev(sensor);
 	if (ret) {
 		dev_err(&me->pdev->dev, "failed to register subdev sensor\n");
-		goto error;
+		goto err_sysfs_remove;
 	}
 
 	if (me->interface_type == NX_CAPTURE_INTERFACE_MIPI_CSI) {
@@ -1720,7 +1732,7 @@ static int register_sensor_subdev(struct nx_clipper *me)
 		mipi_csi = nx_v4l2_get_subdev("nx-csi");
 		if (!mipi_csi) {
 			dev_err(&me->pdev->dev, "can't get mipi_csi subdev\n");
-			goto error;
+			goto err_unregister_sensor;
 		}
 
 		ret = media_create_pad_link(&mipi_csi->entity, 1,
@@ -1728,13 +1740,13 @@ static int register_sensor_subdev(struct nx_clipper *me)
 		if (ret < 0) {
 			dev_err(&me->pdev->dev,
 				"failed to create link from csi to clipper\n");
-			goto error;
+			goto err_unregister_sensor;
 		}
 
 		ret = setup_link(&mipi_csi->entity.pads[1],
 				 &me->subdev.entity.pads[0]);
 		if (ret)
-			BUG();
+			goto err_unregister_sensor;
 
 		input = &mipi_csi->entity;
 		pad = 0;
@@ -1744,19 +1756,38 @@ static int register_sensor_subdev(struct nx_clipper *me)
 	}
 
 	ret = media_create_pad_link(&sensor->entity, 0, input, pad, 0);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(&me->pdev->dev,
 			"failed to create link from sensor\n");
+		goto err_unregister_sensor;
+	}
 
 	ret = setup_link(&sensor->entity.pads[0], &input->pads[pad]);
 	if (ret)
-		BUG();
-
-error:
-	if (client && ret < 0)
-		i2c_unregister_device(client);
-
+		goto err_unregister_sensor;
+	return 0;
+err_unregister_sensor:
+	v4l2_device_unregister_subdev(sensor);
+err_sysfs_remove:
+	remove_sysfs_for_camera_sensor(me);
+err_unregister_client:
+	i2c_unregister_device(me->client);
+err_put_adap:
+	i2c_put_adapter(adapter);
 	return ret;
+}
+
+static void unregister_sensor_subdev(struct nx_clipper *me)
+{
+	struct i2c_adapter *adap;
+	struct v4l2_subdev *sensor;
+
+	sensor = i2c_get_clientdata(me->client);
+	v4l2_device_unregister_subdev(sensor);
+	remove_sysfs_for_camera_sensor(me);
+	adap = me->client->adapter;
+	i2c_unregister_device(me->client);
+	i2c_put_adapter(adap);
 }
 
 static int register_v4l2(struct nx_clipper *me)
@@ -1770,12 +1801,12 @@ static int register_v4l2(struct nx_clipper *me)
 
 	ret = nx_v4l2_register_subdev(&me->subdev);
 	if (ret)
-		BUG();
+		return ret;
 
 	ret = register_sensor_subdev(me);
 	if (ret) {
 		dev_err(&me->pdev->dev, "can't register sensor subdev\n");
-		return ret;
+		goto err_unregister_me;
 	}
 
 #ifdef CONFIG_VIDEO_NEXELL_CLIPPER
@@ -1783,23 +1814,31 @@ static int register_v4l2(struct nx_clipper *me)
 	video = nx_video_create(dev_name, NX_VIDEO_TYPE_CAPTURE,
 				    nx_v4l2_get_v4l2_device());
 	if (!video)
-		BUG();
+		goto err_unregister_sensor;
 
 
 	ret = media_create_pad_link(entity, NX_CLIPPER_PAD_SOURCE_MEM,
 				       &video->vdev.entity, 0, 0);
 	if (ret < 0)
-		BUG();
+		goto err_cleanup_video;
 
 	me->vbuf_obj.video = video;
 
 	ret = setup_link(&entity->pads[NX_CLIPPER_PAD_SOURCE_MEM],
 			 &video->vdev.entity.pads[0]);
 	if (ret)
-		BUG();
+		goto err_cleanup_video;
 #endif
-
 	return 0;
+#ifdef CONFIG_VIDEO_NEXELL_CLIPPER
+err_cleanup_video:
+	nx_video_cleanup(video);
+err_unregister_sensor:
+#endif
+	unregister_sensor_subdev(me);
+err_unregister_me:
+	v4l2_device_unregister_subdev(&me->subdev);
+	return ret;
 }
 
 static void unregister_v4l2(struct nx_clipper *me)
@@ -1810,6 +1849,7 @@ static void unregister_v4l2(struct nx_clipper *me)
 		me->vbuf_obj.video = NULL;
 	}
 #endif
+	unregister_sensor_subdev(me);
 	v4l2_device_unregister_subdev(&me->subdev);
 }
 

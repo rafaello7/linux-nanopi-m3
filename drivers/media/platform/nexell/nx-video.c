@@ -1283,7 +1283,7 @@ struct nx_video *nx_video_create(char *name, u32 type,
 	me->vdev.v4l2_dev  = v4l2_dev;
 	me->vdev.minor     = -1;
 	me->vdev.vfl_type  = VFL_TYPE_GRABBER;
-	me->vdev.release   = video_device_release;
+	me->vdev.release   = video_device_release_empty;
 	me->vdev.lock      = &me->lock;
 
 	vbq = kzalloc(sizeof(*vbq), GFP_KERNEL);
@@ -1472,3 +1472,7 @@ void nx_video_unregister_buffer_consumer(struct nx_video_buffer_object *obj)
 	}
 }
 EXPORT_SYMBOL_GPL(nx_video_unregister_buffer_consumer);
+
+MODULE_AUTHOR("swpark <swpark@nexell.co.kr>");
+MODULE_DESCRIPTION("Nexell S5Pxx18 series SoC video helper driver");
+MODULE_LICENSE("GPL");

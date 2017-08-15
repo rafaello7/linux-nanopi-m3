@@ -298,7 +298,7 @@ void nx_vip_set_input_port(u32 module_index, u32 input_port)
 	p_register = __g_p_register[module_index];
 	writel((u32)input_port, &p_register->vip_vip1);
 }
-EXPORT_SYMBOL(nx_vip_set_input_port);
+EXPORT_SYMBOL_GPL(nx_vip_set_input_port);
 
 u32 nx_vip_get_input_port(u32 module_index)
 {
@@ -327,7 +327,7 @@ void nx_vip_set_data_mode(u32 module_index, u32 data_order, u32 data_width)
 	temp |= ((8 == data_width) ? dwidth_mask : 0);
 	writel((u16)temp, &p_register->vip_config);
 }
-EXPORT_SYMBOL(nx_vip_set_data_mode);
+EXPORT_SYMBOL_GPL(nx_vip_set_data_mode);
 
 void nx_vip_get_data_mode(u32 module_index, u32 *p_data_order,
 			  u32 *p_data_width)
@@ -435,7 +435,7 @@ void nx_vip_set_hvsync(u32 module_index, int b_ext_sync, u32 avw, u32 avh,
 	nx_vip_set_sync(module_index, b_ext_sync, nx_vip_vd_8bit, avw, avh, hsw,
 			hfp, hbp, vsw, vfp, vbp);
 }
-EXPORT_SYMBOL(nx_vip_set_hvsync);
+EXPORT_SYMBOL_GPL(nx_vip_set_hvsync);
 
 void nx_vip_set_hvsync_for_mipi(u32 module_index, u32 avw, u32 avh, u32 hsw,
 				u32 hfp, u32 hbp, u32 vsw, u32 vfp, u32 vbp)
@@ -475,7 +475,7 @@ void nx_vip_set_hvsync_for_mipi(u32 module_index, u32 avw, u32 avh, u32 hsw,
 	writel(hfp + hsw - 7, &p_register->vip_hend);
 #endif
 }
-EXPORT_SYMBOL(nx_vip_set_hvsync_for_mipi);
+EXPORT_SYMBOL_GPL(nx_vip_set_hvsync_for_mipi);
 
 void nx_vip_get_hvsync(u32 module_index, int *p_ext_sync, u32 *pavw, u32 *pavh,
 		       u32 *phbegin, u32 *phend, u32 *pvbegin, u32 *pvend)
@@ -525,7 +525,7 @@ void nx_vip_set_dvalid_mode(u32 module_index, int b_ext_dvalid,
 	temp |= (((b_sync_pol & 0x1) << 8) | ((b_sync_pol & 0x1) << 9));
 	writel((u16)temp, &p_register->vip_syncctrl);
 }
-EXPORT_SYMBOL(nx_vip_set_dvalid_mode);
+EXPORT_SYMBOL_GPL(nx_vip_set_dvalid_mode);
 
 void nx_vip_get_dvalid_mode(u32 module_index, int *p_ext_dvalid,
 			    int *p_dvalid_pol)
@@ -565,7 +565,7 @@ void nx_vip_set_field_mode(u32 module_index, int b_ext_field,
 		     ((b_inv_field) ? fieldinv : 0)),
 	       &p_register->vip_scanmode);
 }
-EXPORT_SYMBOL(nx_vip_set_field_mode);
+EXPORT_SYMBOL_GPL(nx_vip_set_field_mode);
 
 void nx_vip_get_field_mode(u32 module_index, int *p_ext_field,
 			   u32 *p_field_sel, int *p_interlace,
@@ -601,6 +601,7 @@ bool nx_vip_get_field_status(u32 module_index)
 	return (__g_p_register[module_index]->vip_syncctrl & lastfield) ? true
 		: false;
 }
+EXPORT_SYMBOL_GPL(nx_vip_get_field_status);
 
 bool nx_vip_get_hsync_status(u32 module_index)
 {
@@ -626,7 +627,7 @@ void nx_vip_set_fiforeset_mode(u32 module_index, u32 fiforeset)
 	p_register = __g_p_register[module_index];
 	writel((u16)(fiforeset << resetfifosel_pos), &p_register->vip_fifoctrl);
 }
-EXPORT_SYMBOL(nx_vip_set_fiforeset_mode);
+EXPORT_SYMBOL_GPL(nx_vip_set_fiforeset_mode);
 
 u32 nx_vip_get_fiforeset_mode(u32 module_index)
 {
@@ -680,7 +681,7 @@ void nx_vip_set_clip_region(u32 module_index, u32 left, u32 top, u32 right,
 	writel((u16)top, &p_register->clip_top);
 	writel((u16)bottom, &p_register->clip_bottom);
 }
-EXPORT_SYMBOL(nx_vip_set_clip_region);
+EXPORT_SYMBOL_GPL(nx_vip_set_clip_region);
 
 void nx_vip_get_clip_region(u32 module_index, u32 *p_left, u32 *p_top,
 			    u32 *p_right, u32 *p_bottom)
@@ -717,7 +718,7 @@ void nx_vip_set_decimation(u32 module_index, u32 src_width, u32 src_height,
 	deci_src_width[module_index] = src_width;
 	deci_src_height[module_index] = src_height;
 }
-EXPORT_SYMBOL(nx_vip_set_decimation);
+EXPORT_SYMBOL_GPL(nx_vip_set_decimation);
 
 void nx_vip_get_decimation(u32 module_index, u32 *p_dst_width,
 			   u32 *p_dst_height, u32 *p_delta_width,
@@ -763,6 +764,7 @@ void nx_vip_set_clipper_format(u32 module_index, u32 format)
 	writel(0, &p_register->clip_rotflip);
 #endif
 }
+EXPORT_SYMBOL_GPL(nx_vip_set_clipper_format);
 
 void nx_vip_get_clipper_format(u32 module_index, u32 *p_format)
 {
@@ -780,7 +782,7 @@ void nx_vip_set_decimator_format(u32 module_index, u32 format)
 	p_register = __g_p_register[module_index];
 	writel((u16)format, &p_register->deci_format);
 }
-EXPORT_SYMBOL(nx_vip_set_decimator_format);
+EXPORT_SYMBOL_GPL(nx_vip_set_decimator_format);
 
 void nx_vip_get_decimator_format(u32 module_index, u32 *p_format)
 {
@@ -859,6 +861,7 @@ void nx_vip_set_clipper_addr(u32 module_index, u32 format, u32 width,
 	}
 #endif
 }
+EXPORT_SYMBOL_GPL(nx_vip_set_clipper_addr);
 
 void nx_vip_set_decimator_addr(u32 module_index, u32 format,
 			       u32 width, u32 height, u32 lu_addr, u32 cb_addr,
@@ -927,7 +930,7 @@ void nx_vip_set_decimator_addr(u32 module_index, u32 format,
 	writel(stride_cb_cr, &p_register->clip_stridel);
 #endif
 }
-EXPORT_SYMBOL(nx_vip_set_decimator_addr);
+EXPORT_SYMBOL_GPL(nx_vip_set_decimator_addr);
 
 int nx_vip_smoke_test(u32 module_index)
 {

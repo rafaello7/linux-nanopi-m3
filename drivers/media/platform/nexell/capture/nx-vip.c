@@ -482,8 +482,8 @@ static int nx_vip_remove(struct platform_device *pdev)
 	struct nx_vip *me = platform_get_drvdata(pdev);
 
 	if (me) {
-		_nx_vip_object[me->module] = NULL;
 		nx_vip_clock_enable(me->module, false);
+		_nx_vip_object[me->module] = NULL;
 	}
 
 	return 0;
