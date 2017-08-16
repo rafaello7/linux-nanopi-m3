@@ -1407,7 +1407,6 @@ static int nx_clipper_set_fmt(struct v4l2_subdev *sd,
 	}
 #ifdef CONFIG_VIDEO_NEXELL_CLIPPER
 	else if (pad == 1) {
-		struct v4l2_subdev_format fmt;
 		/* set memory format */
 		u32 nx_mem_fmt;
 		int ret = nx_vip_find_nx_mem_format(format->format.code,
@@ -1421,11 +1420,7 @@ static int nx_clipper_set_fmt(struct v4l2_subdev *sd,
 		me->width = format->format.width;
 		me->height = format->format.height;
 
-		memset(&fmt, 0, sizeof(fmt));
-		fmt.format.width = me->width;
-		fmt.format.height = me->height;
-
-		return v4l2_subdev_call(remote, pad, set_fmt, NULL, &fmt);
+		return v4l2_subdev_call(remote, pad, set_fmt, NULL, format);
 	}
 #endif
 	else {
