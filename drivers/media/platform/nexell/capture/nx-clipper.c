@@ -1311,6 +1311,28 @@ static int nx_clipper_g_ctrl(struct v4l2_subdev *sd,
 }
 #endif
 
+
+static int nx_clipper_s_power(struct v4l2_subdev *sd, int on)
+{
+	struct nx_clipper *me = v4l2_get_subdevdata(sd);
+	struct v4l2_subdev *remote = get_remote_source_subdev(me);
+	const char *stateStr = on ? "on" : "off";
+	unsigned state;
+	int ret = 0;
+
+	if( remote ) {
+		state = NX_ATOMIC_READ(&me->state);
+		if( state != STATE_IDLE)
+			dev_warn(&me->pdev->dev,
+					"sensor power %s request in non-idle state (0x%x)\n",
+					stateStr, state);
+		ret = v4l2_subdev_call(remote, core, s_power, on);
+	}else{
+		dev_warn(&me->pdev->dev, "can't set %s sensor power\n", stateStr);
+	}
+	return ret;
+}
+
 /**
  * called by VIDIOC_SUBDEV_S_CROP
  */
@@ -1449,16 +1471,15 @@ static const struct v4l2_subdev_pad_ops nx_clipper_pad_ops = {
 	.set_fmt = nx_clipper_set_fmt,
 };
 
-#if 0
 static const struct v4l2_subdev_core_ops nx_clipper_core_ops = {
-	.g_ctrl = nx_clipper_g_ctrl,
+	//.g_ctrl = nx_clipper_g_ctrl,
+	.s_power = nx_clipper_s_power,
 };
-#endif
 
 static const struct v4l2_subdev_ops nx_clipper_subdev_ops = {
 	.video = &nx_clipper_video_ops,
 	.pad = &nx_clipper_pad_ops,
-	//.core = &nx_clipper_core_ops,
+	.core = &nx_clipper_core_ops,
 };
 
 /**
