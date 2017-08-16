@@ -610,6 +610,7 @@ static int nx_video_vbq_init(struct nx_video *me, uint32_t type)
 	vbq->drv_priv = me;
 	vbq->ops      = &nx_vb2_ops;
 	vbq->mem_ops  = &vb2_dma_contig_memops;
+	vbq->dev      = me->v4l2_dev->dev;
 
 	vbq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 
