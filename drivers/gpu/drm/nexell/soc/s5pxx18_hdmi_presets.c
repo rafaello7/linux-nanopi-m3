@@ -560,8 +560,7 @@ static const struct hdmi_preset hdmi_conf_1024x768p70 = {
 		.refresh = 70,		/* 70.0694 */
 		.name = "1024x768@70Hz",
 		.flags = RES_FIELD_NHSYNC | RES_FIELD_NVSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 /* DMTModes */
@@ -574,8 +573,7 @@ static const struct hdmi_preset hdmi_conf_800x600p85 = {
 		.refresh = 85,		/* 85.0613 */
 		.name = "800x600@85Hz",
 		.flags = 0
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1280x768p60 = {
@@ -586,8 +584,7 @@ static const struct hdmi_preset hdmi_conf_1280x768p60 = {
 		.refresh = 60,		/* 59.8702 */
 		.name = "1280x768@60Hz",
 		.flags = RES_FIELD_NHSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1280x800p120 = {
@@ -598,8 +595,7 @@ static const struct hdmi_preset hdmi_conf_1280x800p120 = {
 		.refresh = 120,		/* 119.909 */
 		.name = "1280x800@120Hz RB",
 		.flags = RES_FIELD_NVSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1280x960p85 = {
@@ -610,8 +606,7 @@ static const struct hdmi_preset hdmi_conf_1280x960p85 = {
 		.refresh = 85,		/* 85.0025 */
 		.name = "1280x960@85Hz",
 		.flags = 0
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1280x1024p85 = {
@@ -622,8 +617,7 @@ static const struct hdmi_preset hdmi_conf_1280x1024p85 = {
 		.refresh = 85,		/* 85.0241 */
 		.name = "1280x1024@85Hz",
 		.flags = 0
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1360x768p120 = {
@@ -634,8 +628,7 @@ static const struct hdmi_preset hdmi_conf_1360x768p120 = {
 		.refresh = 120,		/* 119.967 */
 		.name = "1360x768@120Hz RB",
 		.flags = RES_FIELD_NVSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1400x1050p75 = {
@@ -646,8 +639,7 @@ static const struct hdmi_preset hdmi_conf_1400x1050p75 = {
 		.refresh = 75,		/* 74.8667 */
 		.name = "1400x1050@75Hz",
 		.flags = RES_FIELD_NHSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1440x900p85 = {
@@ -658,8 +650,7 @@ static const struct hdmi_preset hdmi_conf_1440x900p85 = {
 		.refresh = 85,		/* 84.8421 */
 		.name = "1440x900@85Hz",
 		.flags = RES_FIELD_NHSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1680x1050p60 = {
@@ -670,8 +661,7 @@ static const struct hdmi_preset hdmi_conf_1680x1050p60 = {
 		.refresh = 60,		/* 59.9543 */
 		.name = "1680x1050@60Hz",
 		.flags = RES_FIELD_NHSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 static const struct hdmi_preset hdmi_conf_1920x1200p60 = {
@@ -682,8 +672,7 @@ static const struct hdmi_preset hdmi_conf_1920x1200p60 = {
 		.refresh = 60,		/* 59.9502 */
 		.name = "1920x1200@60Hz RB",
 		.flags = RES_FIELD_NVSYNC
-	},
-	.dvi_mode = true
+	}
 };
 
 /*
