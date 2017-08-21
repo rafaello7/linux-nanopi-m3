@@ -37,19 +37,7 @@ static const uint32_t support_formats_rgb[] = {
 static const uint32_t support_formats_vid[] = {
 	/* 1 buffer */
 	DRM_FORMAT_YUYV,
-	DRM_FORMAT_YVYU,
-	DRM_FORMAT_UYVY,
-	DRM_FORMAT_VYUY,
-	/* 2 buffer */
-	DRM_FORMAT_NV12,
-	DRM_FORMAT_NV21,
-	DRM_FORMAT_NV16,
-	DRM_FORMAT_NV61,
 	/* 3 buffer */
-	DRM_FORMAT_YUV410,
-	DRM_FORMAT_YVU410,
-	DRM_FORMAT_YUV411,
-	DRM_FORMAT_YVU411,
 	DRM_FORMAT_YUV420,
 	DRM_FORMAT_YVU420,
 	DRM_FORMAT_YUV422,

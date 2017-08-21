@@ -107,21 +107,27 @@ static int convert_dp_rgb_format(uint32_t pixel_format,
 }
 
 static uint32_t convert_dp_vid_format(uint32_t fourcc,
-			uint32_t *format)
+			uint32_t *format, bool *isVUloc)
 {
 	uint32_t fmt;
     struct drm_format_name_buf fmt_name_buf;
+	bool isVU = false;
 
 	switch (fourcc) {
 	case DRM_FORMAT_YUV420:
-	case DRM_FORMAT_YVU411:
+	case DRM_FORMAT_YVU420:
 		fmt = nx_mlc_yuvfmt_420 | 0x1<<31;
+		isVU = fourcc == DRM_FORMAT_YVU420;
 		break;
 	case DRM_FORMAT_YUV422:
+	case DRM_FORMAT_YVU422:
 		fmt = nx_mlc_yuvfmt_422 | 0x1<<31;
+		isVU = fourcc == DRM_FORMAT_YVU422;
 		break;
 	case DRM_FORMAT_YUV444:
+	case DRM_FORMAT_YVU444:
 		fmt = nx_mlc_yuvfmt_444 | 0x1<<31;
+		isVU = fourcc == DRM_FORMAT_YVU444;
 		break;
 	case DRM_FORMAT_YUYV:
 		fmt = nx_mlc_yuvfmt_yuyv | 0x1<<31;
@@ -133,6 +139,7 @@ static uint32_t convert_dp_vid_format(uint32_t fourcc,
 	}
 
 	*format = fmt;
+	*isVUloc = isVU;
 	return 0;
 }
 
@@ -888,11 +895,12 @@ int nx_drm_dp_plane_update(struct drm_plane *plane,
 
 	/* update video plane */
 	} else {
-		dma_addr_t lua, cba, cra;
-		int lus, cbs, crs;
+		dma_addr_t lua, uvdma[2];
+		int lus, uvs[2];
+		bool isVU;
 
 		ret = convert_dp_vid_format(fb->format->format,
-					&format);
+					&format, &isVU);
 		if (0 > ret)
 			return ret;
 
@@ -911,12 +919,12 @@ int nx_drm_dp_plane_update(struct drm_plane *plane,
 		case 2:
 		case 3:
 			lua = dma_addrs[0];
-			cba = offsets[1] ? lua + offsets[1] : dma_addrs[1];
-			cra = offsets[2] ? lua + offsets[2] : dma_addrs[2];
-			lus = pitches[0], cbs = pitches[1], crs = pitches[2];
+			uvdma[isVU] = offsets[1] ? lua + offsets[1] : dma_addrs[1];
+			uvdma[!isVU] = offsets[2] ? lua + offsets[2] : dma_addrs[2];
+			lus = pitches[0], uvs[isVU] = pitches[1], uvs[!isVU] = pitches[2];
 
 			nx_soc_dp_plane_video_set_address_3p(layer, lua, lus,
-				cba, cbs, cra, crs, true);
+				uvdma[0], uvs[0], uvdma[1], uvs[1], true);
 			break;
 		default:
 			ret = -EINVAL;
