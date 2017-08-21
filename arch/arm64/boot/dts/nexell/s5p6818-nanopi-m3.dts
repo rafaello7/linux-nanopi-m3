@@ -418,13 +418,29 @@
                     reg = <0>;
                     back_color = < 0x0 >;
                     color_key = < 0x0 >;
-                    plane-names = "video", "primary", "rgb";
+					/* Port 0 has two RGB planes and one video plane. These planes
+					 * are arranged in z-order: RGB plane 0 is below plane 1,
+					 * video plane may be set at any position in z-order.
+					 *
+					 * Possible names for RGB planes: "primary", "rgb", "cursor"
+					 * Possible name for video plane: "video"
+					 * Two RGB plane names and one video plane name may be specified in
+					 * "plane-names" property.
+					 * RGB plane "primary" will be used as root window.
+					 * RGB plane "cursor" will be used for cursor.
+					 * RGB plane "rgb" and video plane are overlay planes, normally
+					 * not used by X-windows.
+					 *
+					 * Order of plane names specifies z-order of planes, top to bottom.
+					 */
+                    plane-names = "cursor", "video", "primary";
                 };
                 port@1 {
                     reg = <1>;
                     back_color = < 0x0 >;
                     color_key = < 0x0 >;
-                    plane-names = "video", "primary", "rgb";
+					/* Port 1 has one RGB plane and one video plane only. */
+                    plane-names = "video", "primary";
                 };
             };
         };

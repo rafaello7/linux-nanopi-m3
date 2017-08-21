@@ -534,10 +534,10 @@ static int nx_drm_crtc_parse_dt_setup(struct drm_device *drm,
 }
 
 static int nx_drm_crtc_create_planes(struct drm_device *drm,
-			struct drm_crtc *crtc, int pipe)
+			struct drm_crtc *crtc)
 {
 	struct drm_plane **planes;
-	struct drm_plane *plane;
+	struct drm_plane *plane, *plane_primary = NULL, *plane_cursor = NULL;
 	struct nx_drm_crtc *nx_crtc = to_nx_crtc(crtc);
 	struct dp_plane_top *top = &nx_crtc->top;
 	int i = 0, ret = 0;
@@ -560,22 +560,29 @@ static int nx_drm_crtc_create_planes(struct drm_device *drm,
 		plane_num = video ? PLANE_VIDEO_NUM : num++;
 
 		plane = nx_drm_plane_init(
-				drm, crtc, (1 << pipe), drm_type, plane_num);
+				drm, crtc, drm_crtc_mask(crtc), drm_type, plane_num);
 		if (IS_ERR(plane)) {
 			ret = PTR_ERR(plane);
 			goto err_plane;
 		}
 
-		if (DRM_PLANE_TYPE_PRIMARY == drm_type) {
+		switch( drm_type ) {
+		case DRM_PLANE_TYPE_PRIMARY:
 			top->primary_plane = num - 1;
-			ret = drm_crtc_init_with_planes(drm,
-					crtc, plane, NULL, &nx_crtc_funcs, NULL);
-			if (0 > ret)
-				goto err_plane;
+			plane_primary = plane;
+			break;
+		case DRM_PLANE_TYPE_CURSOR:
+			plane_cursor = plane;
+			break;
+		default:
+			break;
 		}
 		planes[i] = plane;
 	}
-
+	ret = drm_crtc_init_with_planes(drm,
+			crtc, plane_primary, plane_cursor, &nx_crtc_funcs, NULL);
+	if (0 > ret)
+		goto err_plane;
 	drm_crtc_helper_add(crtc, &nx_crtc_helper_funcs);
 	kfree(planes);
 
@@ -641,7 +648,7 @@ int nx_drm_crtc_init(struct drm_device *drm)
 			return ret;
 
 		nx_drm_dp_crtc_init(drm, &nx_crtc->crtc, pipe);
-		ret = nx_drm_crtc_create_planes(drm, &nx_crtc->crtc, pipe);
+		ret = nx_drm_crtc_create_planes(drm, &nx_crtc->crtc);
 		if (0 > ret)
 			goto err_crtc;
 
