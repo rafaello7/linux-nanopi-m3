@@ -448,10 +448,12 @@ int vidioc_enum_fmt_vid_out_mplane(struct file *file, void *priv,
 	return vidioc_enum_fmt(f, true, true);
 }
 
+
+#define	DST_QUEUE_OFF_BASE	(1 << 30)
 int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
-	int ret = 0;
+	int i, ret = 0;
 
 	FUNC_IN();
 
@@ -472,6 +474,11 @@ int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		if (ret != 0) {
 			pr_err("error in vb2_querybuf() for E(S)\n");
 			return ret;
+		}
+		/* Adjust MMAP memory offsets for the CAPTURE queue */
+		if( buf->memory == V4L2_MEMORY_MMAP ) {
+			for (i = 0; i < buf->length; ++i)
+				buf->m.planes[i].m.mem_offset += DST_QUEUE_OFF_BASE;
 		}
 	} else {
 		pr_err("invalid buf type\n");
@@ -581,16 +588,26 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 		if (ctx->img_fmt.num_planes)
 			*plane_count = ctx->img_fmt.num_planes;
 		else
-			*plane_count = (ctx->chromaInterleave) ? (2) : (3);
+			*plane_count = ctx->chroma_size ? ctx->chromaInterleave ? 2 : 3 : 1;
 
 		if (*buf_count < cnt)
 			*buf_count = cnt;
 		if (*buf_count > VPU_MAX_BUFFERS)
 			*buf_count = VPU_MAX_BUFFERS;
 
-		psize[0] = ctx->luma_size;
-		psize[1] = ctx->chroma_size;
-		psize[2] = ctx->chroma_size;
+		switch( *plane_count ) {
+		case 1:	
+			psize[0] = ctx->luma_size + 2 * ctx->chroma_size;
+			break;
+		case 2:
+			psize[0] = ctx->luma_size;
+			psize[1] = 2 * ctx->chroma_size;
+			break;
+		default: // 3
+			psize[0] = ctx->luma_size;
+			psize[1] = psize[2] = ctx->chroma_size;
+			break;
+		}
 	} else {
 		NX_ErrMsg(("invalid queue type: %d\n", vq->type));
 		return -EINVAL;
@@ -1042,7 +1059,6 @@ static unsigned int nx_vpu_poll(struct file *file, struct poll_table_struct
 	return ret;
 }
 
-#define	DST_QUEUE_OFF_BASE	(1 << 30)
 static int nx_vpu_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
