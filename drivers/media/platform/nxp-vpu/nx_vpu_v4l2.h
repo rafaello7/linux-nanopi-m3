@@ -121,7 +121,7 @@ struct vpu_dec_ctx {
 	struct nx_memory_info *slice_buf;
 	struct nx_memory_info *pv_slice_buf;
 
-	struct list_head dpb_queue;
+	struct nx_vpu_buf *dpb_bufs[VPU_MAX_BUFFERS];
 	unsigned int dpb_queue_cnt;
 
 	int crop_left, crop_right, crop_top, crop_bot;
@@ -132,10 +132,16 @@ struct vpu_dec_ctx {
 	struct vpu_dec_reg_frame_arg *frameArg;
 };
 
-struct nx_vpu_fmt {
+struct nx_vpu_image_fmt {
 	char *name;
 	unsigned int fourcc;
 	unsigned int num_planes;
+	unsigned hsub, vsub;
+};
+
+struct nx_vpu_stream_fmt {
+	char *name;
+	unsigned int fourcc;
 };
 
 struct nx_vpu_ctx {
@@ -163,8 +169,6 @@ struct nx_vpu_ctx {
 
 	int chromaInterleave;
 
-	uint32_t imgFourCC;
-
 	unsigned int strm_size;
 	unsigned int strm_buf_size;
 
@@ -180,8 +184,8 @@ struct nx_vpu_ctx {
 	unsigned long dst_ctrls_avail;
 #endif
 
-	struct nx_vpu_fmt img_fmt;
-	struct nx_vpu_fmt *strm_fmt;
+	struct nx_vpu_image_fmt img_fmt;
+	const struct nx_vpu_stream_fmt *strm_fmt;
 
 	struct vb2_queue vq_img;
 	struct vb2_queue vq_strm;
@@ -217,17 +221,20 @@ dma_addr_t nx_vpu_mem_plane_addr(struct nx_vpu_ctx *c, struct vb2_buffer *v,
 	unsigned int n);
 int nx_vpu_try_run(struct nx_vpu_ctx *ctx);
 
-struct nx_vpu_fmt *find_format(struct v4l2_format *f);
+const struct nx_vpu_image_fmt *nx_find_image_format(unsigned fourcc);
+const struct nx_vpu_stream_fmt *nx_find_stream_format(struct v4l2_format *f);
 
 int vidioc_querycap(struct file *file, void *priv, struct v4l2_capability *cap);
-int vidioc_enum_fmt_vid_cap(struct file *file, void *pirv,
+int nx_vidioc_enum_fmt_vid_image(struct file *file, void *pirv,
 	struct v4l2_fmtdesc *f);
-int vidioc_enum_fmt_vid_cap_mplane(struct file *file, void *pirv,
+int nx_vidioc_enum_fmt_vid_image_mplane(struct file *file, void *pirv,
 	struct v4l2_fmtdesc *f);
-int vidioc_enum_fmt_vid_out(struct file *file, void *prov,
+int nx_vidioc_enum_fmt_vid_stream(struct file *file, void *prov,
 	struct v4l2_fmtdesc *f);
-int vidioc_enum_fmt_vid_out_mplane(struct file *file, void *priv,
+int nx_vidioc_enum_fmt_vid_stream_mplane(struct file *file, void *priv,
 	struct v4l2_fmtdesc *f);
+int nx_vidioc_enum_framesizes(struct file *file, void *priv,
+				      struct v4l2_frmsizeenum *fsize);
 int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf);
 int vidioc_streamon(struct file *file, void *priv, enum v4l2_buf_type type);
 int vidioc_streamoff(struct file *file, void *priv, enum v4l2_buf_type type);

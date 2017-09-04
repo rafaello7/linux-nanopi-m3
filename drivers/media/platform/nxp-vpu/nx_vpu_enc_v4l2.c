@@ -382,7 +382,7 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		pix_fmt_mp->height = 0;
 		pix_fmt_mp->field = V4L2_FIELD_NONE;
 		pix_fmt_mp->pixelformat = ctx->strm_fmt->fourcc;
-		pix_fmt_mp->num_planes = ctx->strm_fmt->num_planes;
+		pix_fmt_mp->num_planes = 1;
 
 		pix_fmt_mp->plane_fmt[0].bytesperline = ctx->strm_buf_size;
 		pix_fmt_mp->plane_fmt[0].sizeimage = ctx->strm_buf_size;
@@ -411,13 +411,13 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 
 static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
-	struct nx_vpu_fmt *fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 
 	FUNC_IN();
 
 	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		fmt = find_format(f);
+		const struct nx_vpu_image_fmt *fmt = nx_find_image_format(
+				f->fmt.pix_mp.pixelformat);
 		if (!fmt) {
 			NX_ErrMsg(("failed to try output format(ES), %x\n",
 				pix_fmt_mp->pixelformat));
@@ -432,19 +432,14 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		pix_fmt_mp->plane_fmt[0].bytesperline =
 			pix_fmt_mp->plane_fmt[0].sizeimage;
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		fmt = find_format(f);
+		const struct nx_vpu_stream_fmt *fmt = nx_find_stream_format(f);
 		if (!fmt) {
 			NX_ErrMsg(("failed to try input format(IMG), %x\n",
 				pix_fmt_mp->pixelformat));
 			return -EINVAL;
 		}
 
-		if ((fmt->num_planes != pix_fmt_mp->num_planes) &&
-			(1 != pix_fmt_mp->num_planes)) {
-			NX_ErrMsg(("failed to try input format(%d, %d)\n",
-				fmt->num_planes, pix_fmt_mp->num_planes));
-			return -EINVAL;
-		}
+		pix_fmt_mp->num_planes = 1;
 	} else {
 		NX_ErrMsg(("invalid buf type\n"));
 		return -EINVAL;
@@ -456,7 +451,6 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(priv);
-	struct nx_vpu_fmt *fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	int ret = 0;
 
@@ -473,7 +467,8 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	}
 
 	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		fmt = find_format(f);
+		const struct nx_vpu_image_fmt *fmt = nx_find_image_format(
+				f->fmt.pix_mp.pixelformat);
 		if (!fmt) {
 			NX_ErrMsg(("failed to set capture format\n"));
 			return -EINVAL;
@@ -481,7 +476,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 
 		ctx->vpu_cmd = GET_ENC_INSTANCE;
 
-		ctx->strm_fmt = fmt;
+		ctx->img_fmt = *fmt;
 
 		ctx->strm_buf_size = pix_fmt_mp->plane_fmt[0].sizeimage;
 		pix_fmt_mp->plane_fmt[0].bytesperline = 0;
@@ -489,16 +484,13 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		struct vpu_enc_ctx *enc_ctx = &ctx->codec.enc;
 
-		fmt = find_format(f);
+		const struct nx_vpu_stream_fmt *fmt = nx_find_stream_format(f);
 		if (!fmt) {
 			NX_ErrMsg(("failed to set output format\n"));
 			return -EINVAL;
 		}
 
-		ctx->img_fmt.name = fmt->name;
-		ctx->img_fmt.fourcc = fmt->fourcc;
-		ctx->img_fmt.num_planes = f->fmt.pix_mp.num_planes;
-
+		ctx->strm_fmt = fmt;
 		ctx->width = pix_fmt_mp->width;
 		ctx->height = pix_fmt_mp->height;
 		enc_ctx->reconChromaInterleave = RECON_CHROMA_INTERLEAVE;
@@ -1001,10 +993,10 @@ static int vidioc_try_ext_ctrls(struct file *file, void *priv,
 
 static const struct v4l2_ioctl_ops nx_vpu_enc_ioctl_ops = {
 	.vidioc_querycap = vidioc_querycap,
-	.vidioc_enum_fmt_vid_cap = vidioc_enum_fmt_vid_cap,
-	.vidioc_enum_fmt_vid_cap_mplane = vidioc_enum_fmt_vid_cap_mplane,
-	.vidioc_enum_fmt_vid_out = vidioc_enum_fmt_vid_out,
-	.vidioc_enum_fmt_vid_out_mplane = vidioc_enum_fmt_vid_out_mplane,
+	.vidioc_enum_fmt_vid_cap = nx_vidioc_enum_fmt_vid_stream,
+	.vidioc_enum_fmt_vid_cap_mplane = nx_vidioc_enum_fmt_vid_stream_mplane,
+	.vidioc_enum_fmt_vid_out = nx_vidioc_enum_fmt_vid_image,
+	.vidioc_enum_fmt_vid_out_mplane = nx_vidioc_enum_fmt_vid_image_mplane,
 	.vidioc_g_fmt_vid_cap_mplane = vidioc_g_fmt,
 	.vidioc_g_fmt_vid_out_mplane = vidioc_g_fmt,
 	.vidioc_try_fmt_vid_cap_mplane = vidioc_try_fmt,

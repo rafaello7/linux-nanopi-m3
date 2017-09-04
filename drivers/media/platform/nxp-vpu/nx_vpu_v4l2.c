@@ -188,8 +188,13 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 			if (ret != 0)
 				dev_err(err, "Failed to return an instance.\n");
 
+			if (ctx->is_encoder)
+				free_encoder_memory(ctx);
+			else
+				free_decoder_memory(ctx);
 			dev->cur_num_instance--;
 			ctx->is_initialized = 0;
+			ctx->hInst = NULL;
 		}
 		break;
 
@@ -212,178 +217,206 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 /*-----------------------------------------------------------------------------
  *      functions for Input/Output format
  *----------------------------------------------------------------------------*/
-static struct nx_vpu_fmt formats[] = {
+static const struct nx_vpu_image_fmt image_formats[] = {
 	{
 		.name = "YUV 4:2:0 3 Planes",
 		.fourcc = V4L2_PIX_FMT_YUV420M,
 		.num_planes = 3,
+		.hsub = 2, .vsub = 2,
 	},
 	{
 		.name = "YUV 4:2:2 3 Planes",
 		.fourcc = V4L2_PIX_FMT_YUV422M,
 		.num_planes = 3,
+		.hsub = 2, .vsub = 1,
 	},
 	{
 		.name = "YUV 4:4:4 3 Planes",
 		.fourcc = V4L2_PIX_FMT_YUV444M,
 		.num_planes = 3,
+		.hsub = 1, .vsub = 1,
 	},
 	{
 		.name = "Grey 1 Planes",
 		.fourcc = V4L2_PIX_FMT_GREY,
 		.num_planes = 1,
+		.hsub = 0, .vsub = 0,
 	},
 	{
 		.name = "YUV 4:2:0 2 Planes Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV12M,
 		.num_planes = 2,
+		.hsub = 2, .vsub = 2,
 	},
 	{
 		.name = "YUV 4:2:0 2 Planes Y/CrCb",
 		.fourcc = V4L2_PIX_FMT_NV21M,
 		.num_planes = 2,
+		.hsub = 2, .vsub = 2,
 	},
 	{
 		.name = "YUV 4:2:2 2 Planes Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV16M,
 		.num_planes = 2,
+		.hsub = 2, .vsub = 1,
 	},
 	{
 		.name = "YUV 4:2:2 2 Planes Y/CrCb",
 		.fourcc = V4L2_PIX_FMT_NV61M,
 		.num_planes = 2,
+		.hsub = 2, .vsub = 1,
 	},
 	{
 		.name = "YUV 4:4:4 2 Planes Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV24M,
 		.num_planes = 2,
+		.hsub = 1, .vsub = 1,
 	},
 	{
 		.name = "YUV 4:4:4 2 Planes Y/CrCb",
 		.fourcc = V4L2_PIX_FMT_NV42M,
 		.num_planes = 2,
+		.hsub = 1, .vsub = 1,
 	},
+};
+
+static const struct nx_vpu_stream_fmt stream_formats[] = {
 	{
 		.name = "MPEG2 Stream",
 		.fourcc = V4L2_PIX_FMT_MPEG2,
-		.num_planes = 1,
 	},
 	{
 		.name = "MPEG4 Stream",
 		.fourcc = V4L2_PIX_FMT_MPEG4,
-		.num_planes = 1,
 	},
 	{
 		.name = "XVID Stream",
 		.fourcc = V4L2_PIX_FMT_XVID,
-		.num_planes = 1,
 	},
 	{
 		.name = "DIV3 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV3,
-		.num_planes = 1,
 	},
 	{
 		.name = "DIV4 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV4,
-		.num_planes = 1,
 	},
 	{
 		.name = "DIV5 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV5,
-		.num_planes = 1,
 	},
 	{
 		.name = "DIV6 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV6,
-		.num_planes = 1,
 	},
 	{
 		.name = "DIVX Stream",
 		.fourcc = V4L2_PIX_FMT_DIVX,
-		.num_planes = 1,
 	},
 	{
 		.name = "H263 Stream",
 		.fourcc = V4L2_PIX_FMT_H263,
-		.num_planes = 1,
 	},
 	{
 		.name = "H264 Stream",
 		.fourcc = V4L2_PIX_FMT_H264,
-		.num_planes = 1,
 	},
 	{
 		.name = "WMV9 Stream",
 		.fourcc = V4L2_PIX_FMT_WMV9,
-		.num_planes = 1,
 	},
 	{
 		.name = "VC1 Stream",
 		.fourcc = V4L2_PIX_FMT_WVC1,
-		.num_planes = 1,
 	},
 	{
 		.name = "RV8 Stream",
 		.fourcc = V4L2_PIX_FMT_RV8,
-		.num_planes = 1,
 	},
 	{
 		.name = "RV9/10 Stream",
 		.fourcc = V4L2_PIX_FMT_RV9,
-		.num_planes = 1,
 	},
 	{
 		.name = "VP8 Stream",
 		.fourcc = V4L2_PIX_FMT_VP8,
-		.num_planes = 1,
 	},
 	{
 		.name = "SORENSON SPARK Stream",
 		.fourcc = V4L2_PIX_FMT_FLV1,
-		.num_planes = 1,
 	},
 	{
 		.name = "THEORA Stream",
 		.fourcc = V4L2_PIX_FMT_THEORA,
-		.num_planes = 1,
 	},
 	{
 		.name = "JPEG Stream",
 		.fourcc = V4L2_PIX_FMT_MJPEG,
-		.num_planes = 1,
 	},
 };
-#define NUM_FORMATS ARRAY_SIZE(formats)
 
-struct nx_vpu_fmt *find_format(struct v4l2_format *f)
+const struct nx_vpu_image_fmt *nx_find_image_format(unsigned fourcc)
 {
 	unsigned int i;
 
 	FUNC_IN();
 
-	for (i = 0 ; i < NUM_FORMATS ; i++) {
-		if (formats[i].fourcc == f->fmt.pix_mp.pixelformat)
-			return &formats[i];
+	for (i = 0 ; i < ARRAY_SIZE(image_formats); i++) {
+		if (image_formats[i].fourcc == fourcc)
+			return &image_formats[i];
 	}
 	return NULL;
 }
 
-static int vidioc_enum_fmt(struct v4l2_fmtdesc *f, bool mplane, bool out)
+const struct nx_vpu_stream_fmt *nx_find_stream_format(struct v4l2_format *f)
 {
-	struct nx_vpu_fmt *fmt;
+	unsigned int i;
+
+	FUNC_IN();
+
+	for (i = 0 ; i < ARRAY_SIZE(stream_formats); i++) {
+		if (stream_formats[i].fourcc == f->fmt.pix_mp.pixelformat)
+			return &stream_formats[i];
+	}
+	return NULL;
+}
+
+static int nx_vidioc_enum_image_fmt(struct v4l2_fmtdesc *f, bool mplane)
+{
+	const struct nx_vpu_image_fmt *fmt;
 	int i, j = 0;
 
 	FUNC_IN();
 
-	for (i = 0; i < ARRAY_SIZE(formats); ++i) {
-		if (mplane && formats[i].num_planes == 1)
-			continue;
-		else if (!mplane && formats[i].num_planes > 1)
+	for (i = 0; i < ARRAY_SIZE(image_formats); ++i) {
+		if (!mplane && image_formats[i].num_planes > 1)
 			continue;
 
 		if (j == f->index) {
-			fmt = &formats[i];
+			fmt = &image_formats[i];
+			strlcpy(f->description, fmt->name,
+				sizeof(f->description));
+			f->pixelformat = fmt->fourcc;
+
+			return 0;
+		}
+
+		++j;
+	}
+
+	return -EINVAL;
+}
+
+static int nx_vidioc_enum_stream_fmt(struct v4l2_fmtdesc *f, bool mplane)
+{
+	const struct nx_vpu_stream_fmt *fmt;
+	int i, j = 0;
+
+	FUNC_IN();
+
+	for (i = 0; i < ARRAY_SIZE(stream_formats); ++i) {
+		if (j == f->index) {
+			fmt = &stream_formats[i];
 			strlcpy(f->description, fmt->name,
 				sizeof(f->description));
 			f->pixelformat = fmt->fourcc;
@@ -420,34 +453,48 @@ int vidioc_querycap(struct file *file, void *priv, struct v4l2_capability *cap)
 	return 0;
 }
 
-int vidioc_enum_fmt_vid_cap(struct file *file, void *pirv,
+int nx_vidioc_enum_fmt_vid_image(struct file *file, void *pirv,
 	struct v4l2_fmtdesc *f)
 {
 	FUNC_IN();
-	return vidioc_enum_fmt(f, false, false);
+	return nx_vidioc_enum_image_fmt(f, false);
 }
 
-int vidioc_enum_fmt_vid_cap_mplane(struct file *file, void *pirv,
+int nx_vidioc_enum_fmt_vid_image_mplane(struct file *file, void *pirv,
 	struct v4l2_fmtdesc *f)
 {
 	FUNC_IN();
-	return vidioc_enum_fmt(f, true, false);
+	return nx_vidioc_enum_image_fmt(f, true);
 }
 
-int vidioc_enum_fmt_vid_out(struct file *file, void *prov,
+int nx_vidioc_enum_fmt_vid_stream(struct file *file, void *prov,
 	struct v4l2_fmtdesc *f)
 {
 	FUNC_IN();
-	return vidioc_enum_fmt(f, false, true);
+	return nx_vidioc_enum_stream_fmt(f, false);
 }
 
-int vidioc_enum_fmt_vid_out_mplane(struct file *file, void *priv,
+int nx_vidioc_enum_fmt_vid_stream_mplane(struct file *file, void *priv,
 	struct v4l2_fmtdesc *f)
 {
 	FUNC_IN();
-	return vidioc_enum_fmt(f, true, true);
+	return nx_vidioc_enum_stream_fmt(f, true);
 }
 
+int nx_vidioc_enum_framesizes(struct file *file, void *priv,
+				      struct v4l2_frmsizeenum *fsize)
+{
+	if( fsize->index != 0 )
+		return -EINVAL;
+	fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
+	fsize->stepwise.min_width = 8;
+	fsize->stepwise.max_width = 1920;
+	fsize->stepwise.step_width = 8;
+	fsize->stepwise.min_height = 8;
+	fsize->stepwise.max_height = 1080;
+	fsize->stepwise.step_height = 8;
+	return 0;
+}
 
 #define	DST_QUEUE_OFF_BASE	(1 << 30)
 int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf)
@@ -529,24 +576,19 @@ int vidioc_streamoff(struct file *file, void *priv,
  *      functions for VB2 Contorls(struct "vb2_ops")
  *----------------------------------------------------------------------------*/
 
-static int check_vb_with_fmt(struct nx_vpu_fmt *fmt, struct vb2_buffer *vb)
+static int check_vb_with_fmt(struct nx_vpu_ctx *ctx, struct vb2_buffer *vb, bool isStream)
 {
-	struct vb2_queue *vq = vb->vb2_queue;
-	struct nx_vpu_ctx *ctx = vq->drv_priv;
-	int i;
+	int i, num_planes = isStream ? 1 : ctx->img_fmt.num_planes;
 
 	FUNC_IN();
 
-	if (!fmt)
-		return -EINVAL;
-
-	if (fmt->num_planes != vb->num_planes) {
+	if (num_planes != vb->num_planes) {
 		NX_ErrMsg(("invalid plane number for the format(%d, %d)\n",
-			fmt->num_planes, vb->num_planes));
+			num_planes, vb->num_planes));
 		return -EINVAL;
 	}
 
-	for (i = 0; i < fmt->num_planes; i++) {
+	for (i = 0; i < num_planes; i++) {
 		if (!nx_vpu_mem_plane_addr(ctx, vb, i)) {
 			NX_ErrMsg(("failed to get %d plane cookie\n", i));
 			return -EINVAL;
@@ -570,8 +612,8 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 	FUNC_IN();
 
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		if (ctx->strm_fmt)
-			*plane_count = ctx->strm_fmt->num_planes;
+		if (ctx->is_encoder)
+			*plane_count = ctx->img_fmt.num_planes;
 		else
 			*plane_count = 1;
 
@@ -585,7 +627,9 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 		int cnt = (ctx->is_encoder) ? (1) :
 			(ctx->codec.dec.frame_buffer_cnt);
 
-		if (ctx->img_fmt.num_planes)
+		if( ctx->is_encoder )
+			*plane_count = 1;
+		else if (ctx->img_fmt.num_planes)
 			*plane_count = ctx->img_fmt.num_planes;
 		else
 			*plane_count = ctx->chroma_size ? ctx->chromaInterleave ? 2 : 3 : 1;
@@ -648,7 +692,7 @@ int nx_vpu_buf_init(struct vb2_buffer *vb)
 	FUNC_IN();
 
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		ret = check_vb_with_fmt(&ctx->img_fmt, vb);
+		ret = check_vb_with_fmt(ctx, vb, ctx->is_encoder);
 		if (ret < 0)
 			return ret;
 
@@ -656,7 +700,7 @@ int nx_vpu_buf_init(struct vb2_buffer *vb)
 		buf->planes.raw.cb = nx_vpu_mem_plane_addr(ctx, vb, 1);
 		buf->planes.raw.cr = nx_vpu_mem_plane_addr(ctx, vb, 2);*/
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		ret = check_vb_with_fmt(ctx->strm_fmt, vb);
+		ret = check_vb_with_fmt(ctx, vb, !ctx->is_encoder);
 		if (ret < 0)
 			return ret;
 
@@ -678,7 +722,7 @@ int nx_vpu_buf_prepare(struct vb2_buffer *vb)
 	FUNC_IN();
 
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		ret = check_vb_with_fmt(&ctx->img_fmt, vb);
+		ret = check_vb_with_fmt(ctx, vb, ctx->is_encoder);
 		if (ret < 0)
 			return ret;
 
@@ -700,7 +744,7 @@ int nx_vpu_buf_prepare(struct vb2_buffer *vb)
 			}
 		}
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		ret = check_vb_with_fmt(ctx->strm_fmt, vb);
+		ret = check_vb_with_fmt(ctx, vb, !ctx->is_encoder);
 		if (ret < 0)
 			return ret;
 
@@ -981,7 +1025,9 @@ static int nx_vpu_open(struct file *file)
 	return ret;
 
 	/* Deinit when failure occurred */
+#ifdef ENABLE_POWER_SAVING
 err_hw_init:
+#endif
 err_ctx_init:
 	if (ctx->idx < NX_MAX_VPU_INSTANCE){
 		dev->ctx[ctx->idx] = 0;
@@ -1006,11 +1052,6 @@ static int nx_vpu_close(struct file *file)
 	if (ctx->is_initialized) {
 		ctx->vpu_cmd = SEQ_END;
 		nx_vpu_try_run(ctx);
-
-		if (ctx->is_encoder)
-			free_encoder_memory(ctx);
-		else
-			free_decoder_memory(ctx);
 	}
 
 	if (dev->cur_num_instance == 0) {
@@ -1065,6 +1106,7 @@ static int nx_vpu_mmap(struct file *file, struct vm_area_struct *vma)
 	struct nx_vpu_v4l2 *dev = ctx->dev;
 	uint32_t offset = vma->vm_pgoff << PAGE_SHIFT;
 	int ret;
+	bool isStream;
 
 	FUNC_IN();
 
@@ -1072,11 +1114,12 @@ static int nx_vpu_mmap(struct file *file, struct vm_area_struct *vma)
 		return -ERESTARTSYS;
 
 	if (offset < DST_QUEUE_OFF_BASE) {
-		ret = vb2_mmap(&ctx->vq_strm, vma);
+		isStream = !ctx->is_encoder;
 	} else {
 		vma->vm_pgoff -= (DST_QUEUE_OFF_BASE >> PAGE_SHIFT);
-		ret = vb2_mmap(&ctx->vq_img, vma);
+		isStream = ctx->is_encoder;
 	}
+	ret = vb2_mmap(isStream ? &ctx->vq_strm : &ctx->vq_img, vma);
 
 	mutex_unlock(&dev->dev_mutex);
 

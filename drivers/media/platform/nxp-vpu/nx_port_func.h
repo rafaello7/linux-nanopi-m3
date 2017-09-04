@@ -35,14 +35,14 @@
 #define NX_DbgMsg(COND, MSG)	do {					\
 					if (COND) {			\
 						printk(NX_DTAG);	\
-						printk MSG;		\
+						pr_cont MSG;		\
 					}				\
 				} while (0)
 
 #define NX_ErrMsg(MSG)  do {						\
-				printk("%s%s(%d) : ", NX_DTAG, __FILE__,\
+				printk("%s%s(%d): ", NX_DTAG, __FILE__,\
 					__LINE__);			\
-				printk MSG;				\
+				pr_cont MSG;				\
 			} while (0)
 
 #if FUNC_MSG
@@ -51,10 +51,6 @@
 #else
 	#define FUNC_IN()	do {} while (0)
 	#define FUNC_OUT()	do {} while (0)
-#endif
-
-#ifndef ALIGN
-#define ALIGN(X, N)		((X+N-1) & (~(N-1)))
 #endif
 
 #define NX_MAX_PLANES		4

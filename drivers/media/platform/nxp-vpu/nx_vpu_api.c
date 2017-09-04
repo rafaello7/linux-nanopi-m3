@@ -538,8 +538,7 @@ int NX_VpuDeInit(void *dev)
 	}
 
 	if (VPU_IsBusy()) {
-		NX_ErrMsg(("NX_VpuDeInit() failed. VPU_IsBusy!!!\n"));
-		return VPU_RET_BUSY;
+		NX_ErrMsg(("NX_VpuDeInit: VPU_IsBusy!!!\n"));
 	}
 
 	NX_VPU_HWOff(dev);
