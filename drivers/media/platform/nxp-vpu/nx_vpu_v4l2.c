@@ -47,6 +47,8 @@
 #define	NX_VIDEO_ENC_NAME "nx-vpu-enc"
 #define	NX_VIDEO_DEC_NAME "nx-vpu-dec"
 
+static bool single_plane_mode;
+module_param(single_plane_mode, bool, 0444);
 
 #define INFO_MSG		0
 
@@ -218,6 +220,11 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
  *      functions for Input/Output format
  *----------------------------------------------------------------------------*/
 static const struct nx_vpu_image_fmt image_formats[] = {
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420,
+		.num_planes = 1,
+		.hsub = 2, .vsub = 2,
+	},
 	{
 		.fourcc = V4L2_PIX_FMT_YUV420M,
 		.num_planes = 3,
@@ -407,6 +414,7 @@ static int nx_vidioc_enum_stream_fmt(struct v4l2_fmtdesc *f, bool mplane)
 int vidioc_querycap(struct file *file, void *priv, struct v4l2_capability *cap)
 {
 	struct nx_vpu_v4l2 *dev = video_drvdata(file);
+	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
 
 	FUNC_IN();
 
@@ -414,7 +422,9 @@ int vidioc_querycap(struct file *file, void *priv, struct v4l2_capability *cap)
 	strncpy(cap->card, dev->plat_dev->name, sizeof(cap->card) - 1);
 	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s",
 		 dev_name(&dev->plat_dev->dev));
-	cap->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING;
+	cap->device_caps = (ctx->vq_strm.type == V4L2_BUF_TYPE_VIDEO_OUTPUT ?
+			V4L2_CAP_VIDEO_M2M : V4L2_CAP_VIDEO_M2M_MPLANE) |
+		V4L2_CAP_STREAMING;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 
 	return 0;
@@ -477,13 +487,13 @@ int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		(buf->memory != V4L2_MEMORY_DMABUF))
 		return -EINVAL;
 
-	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	if( buf->type == ctx->vq_strm.type ) {
 		ret = vb2_querybuf(&ctx->vq_strm, buf);
 		if (ret != 0) {
 			pr_err("error in vb2_querybuf() for E(D)\n");
 			return ret;
 		}
-	} else if (buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+	} else if( buf->type == ctx->vq_img.type ) {
 		ret = vb2_querybuf(&ctx->vq_img, buf);
 		if (ret != 0) {
 			pr_err("error in vb2_querybuf() for E(S)\n");
@@ -491,8 +501,12 @@ int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		}
 		/* Adjust MMAP memory offsets for the CAPTURE queue */
 		if( buf->memory == V4L2_MEMORY_MMAP ) {
-			for (i = 0; i < buf->length; ++i)
-				buf->m.planes[i].m.mem_offset += DST_QUEUE_OFF_BASE;
+			if( buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE ) {
+				buf->m.offset += DST_QUEUE_OFF_BASE;
+			}else{
+				for (i = 0; i < buf->length; ++i)
+					buf->m.planes[i].m.mem_offset += DST_QUEUE_OFF_BASE;
+			}
 		}
 	} else {
 		pr_err("invalid buf type\n");
@@ -511,9 +525,9 @@ int vidioc_streamon(struct file *file, void *priv,
 
 	FUNC_IN();
 
-	if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+	if( type == ctx->vq_img.type )
 		ret = vb2_streamon(&ctx->vq_img, type);
-	else if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+	else if( type == ctx->vq_strm.type )
 		ret = vb2_streamon(&ctx->vq_strm, type);
 
 	return ret;
@@ -528,9 +542,9 @@ int vidioc_streamoff(struct file *file, void *priv,
 
 	FUNC_IN();
 
-	if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+	if( type == ctx->vq_img.type )
 		ret = vb2_streamoff(&ctx->vq_img, type);
-	else if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+	else if( type == ctx->vq_strm.type )
 		ret = vb2_streamoff(&ctx->vq_strm, type);
 
 	return ret;
@@ -578,7 +592,7 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 
 	FUNC_IN();
 
-	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	if (vq->type == ctx->vq_strm.type ) {
 		if (ctx->is_encoder)
 			*plane_count = ctx->img_fmt.num_planes;
 		else
@@ -590,7 +604,7 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 			*buf_count = VPU_MAX_BUFFERS;
 
 		psize[0] = ctx->strm_buf_size;
-	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+	} else if( vq->type == ctx->vq_img.type ) {
 		int cnt = (ctx->is_encoder) ? (1) :
 			(ctx->codec.dec.frame_buffer_cnt);
 
@@ -658,7 +672,7 @@ int nx_vpu_buf_init(struct vb2_buffer *vb)
 
 	FUNC_IN();
 
-	if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+	if( vq->type == ctx->vq_img.type ) {
 		ret = check_vb_with_fmt(ctx, vb, ctx->is_encoder);
 		if (ret < 0)
 			return ret;
@@ -666,7 +680,7 @@ int nx_vpu_buf_init(struct vb2_buffer *vb)
 		/*buf->planes.raw.y = nx_vpu_mem_plane_addr(ctx, vb, 0);
 		buf->planes.raw.cb = nx_vpu_mem_plane_addr(ctx, vb, 1);
 		buf->planes.raw.cr = nx_vpu_mem_plane_addr(ctx, vb, 2);*/
-	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	} else if( vq->type == ctx->vq_strm.type ) {
 		ret = check_vb_with_fmt(ctx, vb, !ctx->is_encoder);
 		if (ret < 0)
 			return ret;
@@ -688,7 +702,7 @@ int nx_vpu_buf_prepare(struct vb2_buffer *vb)
 
 	FUNC_IN();
 
-	if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+	if( vq->type == ctx->vq_img.type ) {
 		ret = check_vb_with_fmt(ctx, vb, ctx->is_encoder);
 		if (ret < 0)
 			return ret;
@@ -710,7 +724,7 @@ int nx_vpu_buf_prepare(struct vb2_buffer *vb)
 				return -EINVAL;
 			}
 		}
-	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	} else if( vq->type == ctx->vq_strm.type ) {
 		ret = check_vb_with_fmt(ctx, vb, !ctx->is_encoder);
 		if (ret < 0)
 			return ret;
@@ -960,7 +974,7 @@ static int nx_vpu_open(struct file *file)
 		ret = nx_vpu_enc_open(ctx);
 	} else {
 		ctx->is_encoder = 0;
-		ret = nx_vpu_dec_open(ctx);
+		ret = nx_vpu_dec_open(ctx, single_plane_mode);
 	}
 	if (ret)
 		goto err_ctx_init;
@@ -1323,7 +1337,7 @@ static int nx_vpu_probe(struct platform_device *pdev)
 	}
 
 	vfd->fops = &nx_vpu_fops;
-	vfd->ioctl_ops = get_dec_ioctl_ops();
+	vfd->ioctl_ops = get_dec_ioctl_ops(single_plane_mode);
 	vfd->minor = -1;
 	vfd->release = video_device_release;
 	vfd->lock = &dev->dev_mutex;

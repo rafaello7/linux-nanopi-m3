@@ -134,6 +134,23 @@ static void fill_fmt_width_height(struct v4l2_format *f,
 		const struct nx_vpu_image_fmt *fmt,
 		unsigned width, unsigned height)
 {
+	struct v4l2_pix_format *pix = &f->fmt.pix;
+	unsigned bytesperline;
+
+	pix->width = width;
+	pix->height = height;
+
+	bytesperline = ALIGN(width, 8);
+	pix->bytesperline = bytesperline;
+	pix->sizeimage = bytesperline * pix->height;
+	if( fmt->hsub )
+		pix->sizeimage += 2 * bytesperline / fmt->hsub * pix->height / fmt->vsub;
+}
+
+static void fill_fmt_width_height_mplane(struct v4l2_format *f,
+		const struct nx_vpu_image_fmt *fmt,
+		unsigned width, unsigned height)
+{
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	unsigned bytesperline;
 
@@ -164,6 +181,30 @@ static void fill_fmt_width_height(struct v4l2_format *f,
 	}
 }
 
+static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
+	struct v4l2_format *f)
+{
+	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
+	struct v4l2_pix_format *pix = &f->fmt.pix;
+
+	FUNC_IN();
+
+	if ((ctx->width == 0) || (ctx->height == 0) ||
+		(ctx->codec.dec.frame_buffer_cnt == 0)) {
+			NX_ErrMsg(("There is not cfg information!!"));
+			return -EINVAL;
+	}
+
+	pix->pixelformat = ctx->img_fmt.fourcc;
+	pix->field = ctx->codec.dec.interlace_flg[0];
+	fill_fmt_width_height(f, &ctx->img_fmt, ctx->width, ctx->height);
+
+	NX_DbgMsg(INFO_MSG, ("vidioc_g_fmt_vid_cap: W = %d, H = %d\n",
+		pix->width, pix->height));
+
+	return 0;
+}
+
 static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	struct v4l2_format *f)
 {
@@ -181,7 +222,7 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	pix_mp->num_planes = ctx->img_fmt.num_planes;
 	pix_mp->pixelformat = ctx->img_fmt.fourcc;
 	pix_mp->field = ctx->codec.dec.interlace_flg[0];
-	fill_fmt_width_height(f, &ctx->img_fmt, ctx->width, ctx->height);
+	fill_fmt_width_height_mplane(f, &ctx->img_fmt, ctx->width, ctx->height);
 
 	/* TBD. Patch for fedora */
 	if (7 == sizeof(pix_mp->reserved)) {
@@ -194,6 +235,26 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 
 	NX_DbgMsg(INFO_MSG, ("vidioc_g_fmt_vid_cap_mplane : W = %d, H = %d\n",
 		pix_mp->width, pix_mp->height));
+
+	return 0;
+}
+
+static int vidioc_g_fmt_vid_out(struct file *file, void *priv,
+	struct v4l2_format *f)
+{
+	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
+	struct v4l2_pix_format *pix = &f->fmt.pix;
+
+	FUNC_IN();
+
+	NX_DbgMsg(INFO_MSG, ("f->type = %d\n", f->type));
+
+	pix->width = 0;
+	pix->height = 0;
+	pix->field = V4L2_FIELD_NONE;
+	pix->bytesperline = ctx->strm_buf_size;
+	pix->sizeimage = ctx->strm_buf_size;
+	pix->pixelformat = ctx->strm_fmt->fourcc;
 
 	return 0;
 }
@@ -219,6 +280,27 @@ static int vidioc_g_fmt_vid_out_mplane(struct file *file, void *priv,
 	return 0;
 }
 
+static int nx_vidioc_try_cap_fmt(struct file *file, void *priv,
+	struct v4l2_format *f)
+{
+	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
+	struct v4l2_pix_format *pix_fmt = &f->fmt.pix;
+	const struct nx_vpu_image_fmt *fmt;
+
+	FUNC_IN();
+
+	fmt = nx_find_image_format(f->fmt.pix.pixelformat);
+	if (!fmt) {
+		NX_ErrMsg(("capture format %x not found\n",
+			pix_fmt->pixelformat));
+		return -EINVAL;
+	}
+
+	pix_fmt->field = ctx->codec.dec.interlace_flg[0];
+	fill_fmt_width_height(f, fmt, ctx->width, ctx->height);
+	return 0;
+}
+
 static int nx_vidioc_try_cap_fmt_mplane(struct file *file, void *priv,
 	struct v4l2_format *f)
 {
@@ -238,7 +320,23 @@ static int nx_vidioc_try_cap_fmt_mplane(struct file *file, void *priv,
 	if( pix_fmt_mp->num_planes == 0 || pix_fmt_mp->num_planes > fmt->num_planes )
 		pix_fmt_mp->num_planes = fmt->num_planes;
 	pix_fmt_mp->field = ctx->codec.dec.interlace_flg[0];
-	fill_fmt_width_height(f, fmt, ctx->width, ctx->height);
+	fill_fmt_width_height_mplane(f, fmt, ctx->width, ctx->height);
+	return 0;
+}
+
+static int nx_vidioc_try_out_fmt(struct file *file, void *priv,
+	struct v4l2_format *f)
+{
+	struct v4l2_pix_format *pix_fmt = &f->fmt.pix;
+	const struct nx_vpu_stream_fmt *fmt;
+
+	FUNC_IN();
+
+	fmt = nx_find_stream_format(f);
+	if (!fmt) {
+		NX_ErrMsg(("out format %x not found\n", pix_fmt->pixelformat));
+		return -EINVAL;
+	}
 	return 0;
 }
 
@@ -257,6 +355,41 @@ static int nx_vidioc_try_out_fmt_mplane(struct file *file, void *priv,
 		return -EINVAL;
 	}
 	pix_fmt_mp->num_planes = 1;
+	return 0;
+}
+
+static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
+	struct v4l2_format *f)
+{
+	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
+	const struct nx_vpu_image_fmt *img_fmt;
+	int ret = 0;
+
+	FUNC_IN();
+
+	if (ctx->vq_img.streaming) {
+		NX_ErrMsg(("%s queue busy\n", __func__));
+		return -EBUSY;
+	}
+
+	ret = nx_vidioc_try_cap_fmt(file, priv, f);
+	if (ret)
+		return ret;
+
+	img_fmt = nx_find_image_format(f->fmt.pix.pixelformat);
+
+	ctx->img_fmt = *img_fmt;
+	ctx->img_fmt.num_planes = 1;
+
+	if( img_fmt->hsub ) {
+		ctx->buf_c_width = ctx->buf_y_width / img_fmt->hsub;
+		ctx->chroma_size = ctx->buf_c_width * ctx->buf_height / img_fmt->vsub;
+	}else{
+		ctx->buf_c_width = 0;
+		ctx->chroma_size = 0;
+	}
+	ctx->chromaInterleave = 0;
+
 	return 0;
 }
 
@@ -294,6 +427,37 @@ static int vidioc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 	ctx->chromaInterleave = (pix_fmt_mp->num_planes != 2) ? (0) : (1);
 
 	return 0;
+}
+
+static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
+	struct v4l2_format *f)
+{
+	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
+	int ret = 0;
+	struct v4l2_pix_format *pix_fmt = &f->fmt.pix;
+
+	FUNC_IN();
+
+	if (ctx->vq_strm.streaming) {
+		NX_ErrMsg(("%s queue busy\n", __func__));
+		return -EBUSY;
+	}
+
+	ret = nx_vidioc_try_out_fmt(file, priv, f);
+	if (ret)
+		return ret;
+
+	ctx->strm_fmt = nx_find_stream_format(f);
+	ctx->width = pix_fmt->width;
+	ctx->height = pix_fmt->height;
+
+	if (pix_fmt->sizeimage)
+		ctx->strm_buf_size = pix_fmt->sizeimage;
+
+	ctx->vpu_cmd = GET_DEC_INSTANCE;
+	ret = nx_vpu_try_run(ctx);
+
+	return ret;
 }
 
 static int vidioc_s_fmt_vid_out_mplane(struct file *file, void *priv,
@@ -341,13 +505,13 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 		(reqbufs->memory != V4L2_MEMORY_DMABUF))
 		return -EINVAL;
 
-	if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	if (reqbufs->type == ctx->vq_strm.type ) {
 		ret = vb2_reqbufs(&ctx->vq_strm, reqbufs);
 		if (ret != 0) {
 			NX_ErrMsg(("error in vb2_reqbufs() for stream: %d\n", ret));
 			return ret;
 		}
-	} else if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+	} else if (reqbufs->type == ctx->vq_img.type ) {
 		if (reqbufs->count == 0)
 			return vb2_reqbufs(&ctx->vq_img, reqbufs);
 
@@ -386,8 +550,10 @@ static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 
 	FUNC_IN();
 
-	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		if ((buf->m.planes[0].bytesused == 0) && (ctx->is_initialized)) {
+	if (buf->type == ctx->vq_strm.type) {
+		unsigned bytesused = buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT ?
+			buf->bytesused : buf->m.planes[0].bytesused;
+		if( bytesused == 0 && ctx->is_initialized ) {
 			return handle_end_of_stream(ctx);
 		} else {
 			ctx->codec.dec.flush = 0;
@@ -420,7 +586,7 @@ static int vidioc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 
 	FUNC_IN();
 
-	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	if (buf->type == ctx->vq_strm.type ) {
 		ret = vb2_dqbuf(&ctx->vq_strm, buf, file->f_flags & O_NONBLOCK);
 	} else {
 		if ( !holes_for_nxvideodec || ctx->codec.dec.delay_frm == 0) {
@@ -526,9 +692,9 @@ static int nx_vidioc_expbuf(struct file *file, void *fh,
 			     struct v4l2_exportbuffer *e)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
-	if( e->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE ) {
+	if( e->type == ctx->vq_strm.type ) {
 		return vb2_expbuf(&ctx->vq_strm, e);
-	}else if( e->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE ) {
+	}else if( e->type == ctx->vq_img.type ) {
 		return vb2_expbuf(&ctx->vq_img, e);
 	}else{
 		pr_err("nx_vidioc_expbuf: bad buffer type %d\n", e->type);
@@ -557,8 +723,33 @@ static int nx_vidioc_decoder_cmd(struct file *file, void *fh,
 static const struct v4l2_ioctl_ops nx_vpu_dec_ioctl_ops = {
 	.vidioc_querycap = vidioc_querycap,
 	.vidioc_enum_fmt_vid_cap = nx_vidioc_enum_fmt_vid_image,
-	.vidioc_enum_fmt_vid_cap_mplane = nx_vidioc_enum_fmt_vid_image_mplane,
 	.vidioc_enum_fmt_vid_out = nx_vidioc_enum_fmt_vid_stream,
+	.vidioc_enum_framesizes			= nx_vidioc_enum_framesizes,
+	.vidioc_g_fmt_vid_cap			= vidioc_g_fmt_vid_cap,
+	.vidioc_g_fmt_vid_out			= vidioc_g_fmt_vid_out,
+	.vidioc_try_fmt_vid_cap			= nx_vidioc_try_cap_fmt,
+	.vidioc_try_fmt_vid_out			= nx_vidioc_try_out_fmt,
+	.vidioc_s_fmt_vid_cap			= vidioc_s_fmt_vid_cap,
+	.vidioc_s_fmt_vid_out			= vidioc_s_fmt_vid_out,
+	.vidioc_reqbufs = vidioc_reqbufs,
+	.vidioc_querybuf = vidioc_querybuf,
+	.vidioc_qbuf = vidioc_qbuf,
+	.vidioc_dqbuf = vidioc_dqbuf,
+	.vidioc_streamon = vidioc_streamon,
+	.vidioc_streamoff = vidioc_streamoff,
+	.vidioc_queryctrl = vidioc_queryctrl,
+	.vidioc_g_ctrl = vidioc_g_ctrl,
+	.vidioc_s_ctrl = vidioc_s_ctrl,
+	.vidioc_g_crop = vidioc_g_crop,
+	.vidioc_g_ext_ctrls = vidioc_g_ext_ctrls,
+	.vidioc_expbuf = nx_vidioc_expbuf,
+	.vidioc_try_decoder_cmd	= nx_vidioc_try_decoder_cmd,
+	.vidioc_decoder_cmd = nx_vidioc_decoder_cmd,
+};
+
+static const struct v4l2_ioctl_ops nx_vpu_dec_ioctl_ops_mplane = {
+	.vidioc_querycap = vidioc_querycap,
+	.vidioc_enum_fmt_vid_cap_mplane = nx_vidioc_enum_fmt_vid_image_mplane,
 	.vidioc_enum_fmt_vid_out_mplane = nx_vidioc_enum_fmt_vid_stream_mplane,
 	.vidioc_enum_framesizes			= nx_vidioc_enum_framesizes,
 	.vidioc_g_fmt_vid_cap_mplane = vidioc_g_fmt_vid_cap_mplane,
@@ -625,7 +816,7 @@ static void nx_vpu_dec_stop_streaming(struct vb2_queue *q)
 
 	FUNC_IN();
 
-	if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+	if (q->type == ctx->vq_img.type ) {
 		ctx->vpu_cmd = DEC_BUF_FLUSH;
 		nx_vpu_try_run(ctx);
 
@@ -638,7 +829,7 @@ static void nx_vpu_dec_stop_streaming(struct vb2_queue *q)
 		ctx->img_queue_cnt = 0;
 
 		spin_unlock_irqrestore(&dev->irqlock, flags);
-	} else if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	} else if ( q->type == ctx->vq_strm.type ) {
 		spin_lock_irqsave(&dev->irqlock, flags);
 
 		nx_vpu_cleanup_queue(&ctx->strm_queue, &ctx->vq_strm);
@@ -666,10 +857,10 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
-	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	if ( vq->type == ctx->vq_strm.type ) {
 		list_add_tail(&buf->list, &ctx->strm_queue);
 		ctx->strm_queue_cnt++;
-	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+	} else if (vq->type == ctx->vq_img.type ) {
 		struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
 		unsigned int idx = buf->vb.index;
 
@@ -719,12 +910,12 @@ static struct vb2_ops nx_vpu_dec_qops = {
 /* -------------------------------------------------------------------------- */
 
 
-const struct v4l2_ioctl_ops *get_dec_ioctl_ops(void)
+const struct v4l2_ioctl_ops *get_dec_ioctl_ops(bool singlePlane)
 {
-	return &nx_vpu_dec_ioctl_ops;
+	return singlePlane ? &nx_vpu_dec_ioctl_ops : &nx_vpu_dec_ioctl_ops_mplane;
 }
 
-int nx_vpu_dec_open(struct nx_vpu_ctx *ctx)
+int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlane)
 {
 	int ret = 0;
 
@@ -733,7 +924,8 @@ int nx_vpu_dec_open(struct nx_vpu_ctx *ctx)
 	ctx->codec.dec.dpb_queue_cnt = 0;
 
 	/* Init videobuf2 queue for OUTPUT */
-	ctx->vq_strm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	ctx->vq_strm.type = singlePlane ? V4L2_BUF_TYPE_VIDEO_OUTPUT :
+		V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	ctx->vq_strm.drv_priv = ctx;
 	ctx->vq_strm.lock = &ctx->dev->dev_mutex;
 	ctx->vq_strm.buf_struct_size = sizeof(struct nx_vpu_buf);
@@ -750,7 +942,8 @@ int nx_vpu_dec_open(struct nx_vpu_ctx *ctx)
 	}
 
 	/* Init videobuf2 queue for CAPTURE */
-	ctx->vq_img.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	ctx->vq_img.type = singlePlane ? V4L2_BUF_TYPE_VIDEO_CAPTURE :
+		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	ctx->vq_img.drv_priv = ctx;
 	ctx->vq_img.lock = &ctx->dev->dev_mutex;
 	ctx->vq_img.buf_struct_size = sizeof(struct nx_vpu_buf);

@@ -258,9 +258,9 @@ int alloc_encoder_memory(struct nx_vpu_ctx *ctx);
 int free_encoder_memory(struct nx_vpu_ctx *ctx);
 
 /* For Decoder V4L2 */
-const struct v4l2_ioctl_ops *get_dec_ioctl_ops(void);
+const struct v4l2_ioctl_ops *get_dec_ioctl_ops(bool singlePlane);
 
-int nx_vpu_dec_open(struct nx_vpu_ctx *ctx);
+int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlane);
 int vpu_dec_open_instance(struct nx_vpu_ctx *ctx);
 int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx);
 int vpu_dec_init(struct nx_vpu_ctx *ctx);
