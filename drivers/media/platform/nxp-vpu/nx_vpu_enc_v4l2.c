@@ -391,8 +391,10 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		pix_fmt_mp->width = ctx->width;
 		pix_fmt_mp->height = ctx->height;
 		pix_fmt_mp->field = V4L2_FIELD_NONE;
-		pix_fmt_mp->pixelformat = ctx->img_fmt.fourcc;
-		pix_fmt_mp->num_planes = ctx->img_fmt.num_planes;
+		pix_fmt_mp->pixelformat = ctx->img_fmt->fourcc;
+		pix_fmt_mp->num_planes = ctx->useSingleBuf ||
+			ctx->img_fmt->singleBuffer ? 1 :
+			ctx->img_fmt->chromaInterleave ? 2 : 3;
 
 		pix_fmt_mp->plane_fmt[0].bytesperline = ctx->buf_y_width;
 		pix_fmt_mp->plane_fmt[0].sizeimage = ctx->luma_size;
@@ -476,7 +478,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 
 		ctx->vpu_cmd = GET_ENC_INSTANCE;
 
-		ctx->img_fmt = *fmt;
+		ctx->img_fmt = fmt;
 
 		ctx->strm_buf_size = pix_fmt_mp->plane_fmt[0].sizeimage;
 		pix_fmt_mp->plane_fmt[0].bytesperline = 0;
@@ -1096,7 +1098,6 @@ static struct vb2_ops nx_vpu_enc_qops = {
 	.queue_setup            = nx_vpu_queue_setup,
 	.wait_prepare           = nx_vpu_unlock,
 	.wait_finish            = nx_vpu_lock,
-	.buf_init               = nx_vpu_buf_init,
 	.buf_prepare            = nx_vpu_buf_prepare,
 	.start_streaming        = nx_vpu_enc_start_streaming,
 	.stop_streaming         = nx_vpu_enc_stop_streaming,
@@ -1299,7 +1300,7 @@ int vpu_enc_init(struct nx_vpu_ctx *ctx)
 		pSeqArg->frameRateDen = 1;
 		pSeqArg->gopSize = 1;
 
-		switch (ctx->img_fmt.fourcc) {
+		switch (ctx->img_fmt->fourcc) {
 		case V4L2_PIX_FMT_YUV420M:
 			pSeqArg->imgFormat = IMG_FORMAT_420;
 			pSeqArg->chromaInterleave = 0;
@@ -1445,6 +1446,7 @@ int vpu_enc_encode_frame(struct nx_vpu_ctx *ctx)
 	struct nx_vpu_buf *mb_entry;
 	struct vpu_enc_run_frame_arg *pRunArg = &enc_ctx->run_info;
 	struct nx_memory_info stream_buf;
+	int num_planes;
 
 	FUNC_IN();
 
@@ -1471,14 +1473,16 @@ int vpu_enc_encode_frame(struct nx_vpu_ctx *ctx)
 	mb_entry = list_entry(ctx->img_queue.next, struct nx_vpu_buf, list);
 	mb_entry->used = 1;
 
-	for (i = 0 ; i < ctx->img_fmt.num_planes ; i++) {
+	num_planes = ctx->useSingleBuf || ctx->img_fmt->singleBuffer ? 1 :
+		ctx->img_fmt->chromaInterleave ? 2 : 3;
+	for (i = 0 ; i < num_planes ; i++) {
 		pRunArg->inImgBuffer.phyAddr[i] = nx_vpu_mem_plane_addr(ctx,
 			&mb_entry->vb, i);
 		pRunArg->inImgBuffer.stride[i] = (i == 0) ?
 			(ctx->buf_y_width) : (ctx->buf_c_width);
 	}
 
-	if ((ctx->img_fmt.num_planes == 1) && (ctx->chroma_size > 0)) {
+	if( num_planes == 1 && ctx->chroma_size > 0 ) {
 		pRunArg->inImgBuffer.phyAddr[1] = ctx->luma_size +
 			pRunArg->inImgBuffer.phyAddr[0];
 		if (ctx->chromaInterleave == 0)

@@ -135,7 +135,7 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 
 	case SEQ_INIT:
 		if (ctx->is_initialized == 0) {
-			ret = vpu_dec_parse_vid_cfg(ctx);
+			ret = vpu_dec_parse_vid_cfg(ctx, single_plane_mode);
 			if (ret != 0) {
 				dev_err(err, "vpu_dec_parse_vfg() is ");
 				dev_err(err, "failed, ret = %d\n", ret);
@@ -222,58 +222,80 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 static const struct nx_vpu_image_fmt image_formats[] = {
 	{
 		.fourcc = V4L2_PIX_FMT_YUV420,
-		.num_planes = 1,
 		.hsub = 2, .vsub = 2,
+		.chromaInterleave = false,
+		.singleBuffer = true,
 	},
 	{
-		.fourcc = V4L2_PIX_FMT_YUV420M,
-		.num_planes = 3,
-		.hsub = 2, .vsub = 2,
-	},
-	{
-		.fourcc = V4L2_PIX_FMT_YUV422M,
-		.num_planes = 3,
+		.fourcc = V4L2_PIX_FMT_YUV422P,
 		.hsub = 2, .vsub = 1,
+		.chromaInterleave = false,
+		.singleBuffer = true,
 	},
 	{
-		.fourcc = V4L2_PIX_FMT_YUV444M,
-		.num_planes = 3,
+		.fourcc = V4L2_PIX_FMT_YUV444,
 		.hsub = 1, .vsub = 1,
+		.chromaInterleave = false,
+		.singleBuffer = true,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_GREY,
-		.num_planes = 1,
 		.hsub = 0, .vsub = 0,
+		.singleBuffer = true,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420M,
+		.hsub = 2, .vsub = 2,
+		.chromaInterleave = false,
+		.singleBuffer = false,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV422M,
+		.hsub = 2, .vsub = 1,
+		.chromaInterleave = false,
+		.singleBuffer = false,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV444M,
+		.hsub = 1, .vsub = 1,
+		.chromaInterleave = false,
+		.singleBuffer = false,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_NV12M,
-		.num_planes = 2,
 		.hsub = 2, .vsub = 2,
+		.chromaInterleave = true,
+		.singleBuffer = false,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_NV21M,
-		.num_planes = 2,
 		.hsub = 2, .vsub = 2,
+		.chromaInterleave = true,
+		.singleBuffer = false,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_NV16M,
-		.num_planes = 2,
 		.hsub = 2, .vsub = 1,
+		.chromaInterleave = true,
+		.singleBuffer = false,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_NV61M,
-		.num_planes = 2,
 		.hsub = 2, .vsub = 1,
+		.chromaInterleave = true,
+		.singleBuffer = false,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_NV24M,
-		.num_planes = 2,
 		.hsub = 1, .vsub = 1,
+		.chromaInterleave = true,
+		.singleBuffer = false,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_NV42M,
-		.num_planes = 2,
 		.hsub = 1, .vsub = 1,
+		.chromaInterleave = true,
+		.singleBuffer = false,
 	},
 };
 
@@ -362,25 +384,12 @@ const struct nx_vpu_stream_fmt *nx_find_stream_format(struct v4l2_format *f)
 
 static int nx_vidioc_enum_image_fmt(struct v4l2_fmtdesc *f, bool mplane)
 {
-	const struct nx_vpu_image_fmt *fmt;
-	int i, j = 0;
-
-	FUNC_IN();
-
-	for (i = 0; i < ARRAY_SIZE(image_formats); ++i) {
-		if (!mplane && image_formats[i].num_planes > 1)
-			continue;
-
-		if (j == f->index) {
-			fmt = &image_formats[i];
-			f->pixelformat = fmt->fourcc;
-			return 0;
-		}
-
-		++j;
-	}
-
-	return -EINVAL;
+	if( f->index >= ARRAY_SIZE(image_formats) )
+		return -EINVAL;
+	if( !mplane && !image_formats[f->index].singleBuffer )
+		return -EINVAL;
+	f->pixelformat = image_formats[f->index].fourcc;
+	return 0;
 }
 
 static int nx_vidioc_enum_stream_fmt(struct v4l2_fmtdesc *f, bool mplane)
@@ -550,38 +559,10 @@ int vidioc_streamoff(struct file *file, void *priv,
 	return ret;
 }
 
-/* -------------------------------------------------------------------------- */
-
 
 /*-----------------------------------------------------------------------------
  *      functions for VB2 Contorls(struct "vb2_ops")
  *----------------------------------------------------------------------------*/
-
-static int check_vb_with_fmt(struct nx_vpu_ctx *ctx, struct vb2_buffer *vb, bool isStream)
-{
-	int i, num_planes = isStream ? 1 : ctx->img_fmt.num_planes;
-
-	FUNC_IN();
-
-	if (num_planes != vb->num_planes) {
-		NX_ErrMsg(("invalid plane number for the format(%d, %d)\n",
-			num_planes, vb->num_planes));
-		return -EINVAL;
-	}
-
-	for (i = 0; i < num_planes; i++) {
-		if (!nx_vpu_mem_plane_addr(ctx, vb, i)) {
-			NX_ErrMsg(("failed to get %d plane cookie\n", i));
-			return -EINVAL;
-		}
-
-		NX_DbgMsg(INFO_MSG, ("index: %d, plane[%d] cookie: 0x%08lx\n",
-			vb->index, i,
-			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, i)));
-	}
-
-	return 0;
-}
 
 int nx_vpu_queue_setup(struct vb2_queue *vq,
 			unsigned int *buf_count, unsigned int *plane_count,
@@ -594,7 +575,8 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 
 	if (vq->type == ctx->vq_strm.type ) {
 		if (ctx->is_encoder)
-			*plane_count = ctx->img_fmt.num_planes;
+			*plane_count = ctx->useSingleBuf||ctx->img_fmt->singleBuffer ? 1 :
+				ctx->img_fmt->chromaInterleave ? 2 : 3;
 		else
 			*plane_count = 1;
 
@@ -610,10 +592,9 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 
 		if( ctx->is_encoder )
 			*plane_count = 1;
-		else if (ctx->img_fmt.num_planes)
-			*plane_count = ctx->img_fmt.num_planes;
 		else
-			*plane_count = ctx->chroma_size ? ctx->chromaInterleave ? 2 : 3 : 1;
+			*plane_count = ctx->useSingleBuf||ctx->img_fmt->singleBuffer ? 1 :
+				ctx->img_fmt->chromaInterleave ? 2 : 3;
 
 		if (*buf_count < cnt)
 			*buf_count = cnt;
@@ -621,7 +602,7 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 			*buf_count = VPU_MAX_BUFFERS;
 
 		switch( *plane_count ) {
-		case 1:	
+		case 1:
 			psize[0] = ctx->luma_size + 2 * ctx->chroma_size;
 			break;
 		case 2:
@@ -663,84 +644,59 @@ void nx_vpu_lock(struct vb2_queue *q)
 	mutex_lock(&ctx->dev->dev_mutex);
 }
 
-int nx_vpu_buf_init(struct vb2_buffer *vb)
-{
-	struct vb2_queue *vq = vb->vb2_queue;
-	struct nx_vpu_ctx *ctx = vq->drv_priv;
-	/*struct nx_vpu_buf *buf = vb_to_vpu_buf(vb);*/
-	int ret;
-
-	FUNC_IN();
-
-	if( vq->type == ctx->vq_img.type ) {
-		ret = check_vb_with_fmt(ctx, vb, ctx->is_encoder);
-		if (ret < 0)
-			return ret;
-
-		/*buf->planes.raw.y = nx_vpu_mem_plane_addr(ctx, vb, 0);
-		buf->planes.raw.cb = nx_vpu_mem_plane_addr(ctx, vb, 1);
-		buf->planes.raw.cr = nx_vpu_mem_plane_addr(ctx, vb, 2);*/
-	} else if( vq->type == ctx->vq_strm.type ) {
-		ret = check_vb_with_fmt(ctx, vb, !ctx->is_encoder);
-		if (ret < 0)
-			return ret;
-
-		/*buf->planes.stream = nx_vpu_mem_plane_addr(ctx, vb, 0);*/
-	} else {
-		NX_ErrMsg(("inavlid queue type: %d\n", vq->type));
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 int nx_vpu_buf_prepare(struct vb2_buffer *vb)
 {
 	struct vb2_queue *vq = vb->vb2_queue;
 	struct nx_vpu_ctx *ctx = vq->drv_priv;
-	int ret;
+	int i, num_planes;
+	unsigned psize[3];
+	bool isStream;
 
-	FUNC_IN();
-
-	if( vq->type == ctx->vq_img.type ) {
-		ret = check_vb_with_fmt(ctx, vb, ctx->is_encoder);
-		if (ret < 0)
-			return ret;
-
-		NX_DbgMsg(INFO_MSG, ("plane size: %ld, luma size: %d\n",
-			vb2_plane_size(vb, 0), ctx->luma_size));
-
-		if (vb2_plane_size(vb, 0) < ctx->luma_size) {
-			NX_ErrMsg(("plane size is too small for luma\n"));
+	if( vq != &ctx->vq_img && vq != &ctx->vq_strm ) {
+		NX_ErrMsg(("buffer not from my pool"));
+		return -EINVAL;
+	}
+	isStream = ctx->is_encoder == (vq == &ctx->vq_img);
+	num_planes = isStream || ctx->useSingleBuf || ctx->img_fmt->singleBuffer ?
+		1 : ctx->img_fmt->chromaInterleave ? 2 : 3;
+	if (num_planes != vb->num_planes) {
+		NX_ErrMsg(("invalid plane number for the format, right=%d, cur=%d\n",
+			num_planes, vb->num_planes));
+		return -EINVAL;
+	}
+	for (i = 0; i < num_planes; i++) {
+		if (!nx_vpu_mem_plane_addr(ctx, vb, i)) {
+			NX_ErrMsg(("failed to get %d plane cookie\n", i));
 			return -EINVAL;
 		}
 
-		if (ctx->img_fmt.num_planes > 1) {
-			NX_DbgMsg(INFO_MSG, ("plane size:%ld, chroma size:%d\n",
-				vb2_plane_size(vb, 1), ctx->chroma_size));
-
-			if (vb2_plane_size(vb, 1) < ctx->chroma_size) {
-				NX_ErrMsg(("plane size is small for chroma\n"));
+		NX_DbgMsg(INFO_MSG, ("index: %d, plane[%d] cookie: 0x%08lx\n",
+			vb->index, i,
+			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, i)));
+	}
+	if( ! isStream ) {
+		switch( num_planes ) {
+		case 1:
+			psize[0] = ctx->luma_size + 2 * ctx->chroma_size;
+			break;
+		case 2:
+			psize[0] = ctx->luma_size;
+			psize[1] = 2 * ctx->chroma_size;
+			break;
+		default: // 3
+			psize[0] = ctx->luma_size;
+			psize[1] = psize[2] = ctx->chroma_size;
+			break;
+		}
+		for( i = 0; i < num_planes; ++i ) {
+			unsigned cur_psize = vb2_plane_size(vb, i);
+			if( cur_psize < psize[i] ) {
+				NX_ErrMsg(("buffer for plane #%d too small, min=%d cur=%d\n",
+							i, psize[i], cur_psize));
 				return -EINVAL;
 			}
 		}
-	} else if( vq->type == ctx->vq_strm.type ) {
-		ret = check_vb_with_fmt(ctx, vb, !ctx->is_encoder);
-		if (ret < 0)
-			return ret;
-
-		NX_DbgMsg(INFO_MSG, ("plane size: %ld, strm size: %d\n",
-			vb2_plane_size(vb, 0), ctx->strm_buf_size));
-
-		if (vb2_plane_size(vb, 0) < ctx->strm_buf_size) {
-			pr_err("plane size is too small for stream\n");
-			return -EINVAL;
-		}
-	} else {
-		NX_ErrMsg(("inavlid queue type: %d\n", vq->type));
-		return -EINVAL;
 	}
-
 	return 0;
 }
 

@@ -131,10 +131,19 @@ struct vpu_dec_ctx {
 	struct vpu_dec_reg_frame_arg *frameArg;
 };
 
+/* YUV image format description - output for decoder, input for encoder.
+ * For non-planar formats (GRAY8) only fourcc value is meaningful and
+ * singleBuffer, which should be set to true.
+ *
+ * Planar format may be contiguous (chroma directly after luma, in one
+ * buffer) or non-contiguous (in two or three buffers). Chroma may be
+ * interleaved (two planes) or not (three planes).
+ */
 struct nx_vpu_image_fmt {
-	unsigned int fourcc;
-	unsigned int num_planes;
-	unsigned hsub, vsub;
+	unsigned fourcc;
+	unsigned hsub, vsub;	// subpixel for planar formats, 0 for non-planar
+	bool chromaInterleave;
+	bool singleBuffer;		// whether planes are contiguous, in single buffer
 };
 
 struct nx_vpu_stream_fmt {
@@ -181,8 +190,9 @@ struct nx_vpu_ctx {
 	unsigned long dst_ctrls_avail;
 #endif
 
-	struct nx_vpu_image_fmt img_fmt;
+	const struct nx_vpu_image_fmt *img_fmt;
 	const struct nx_vpu_stream_fmt *strm_fmt;
+	bool useSingleBuf;
 
 	struct vb2_queue vq_img;
 	struct vb2_queue vq_strm;
@@ -241,7 +251,6 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 
 void nx_vpu_unlock(struct vb2_queue *q);
 void nx_vpu_lock(struct vb2_queue *q);
-int nx_vpu_buf_init(struct vb2_buffer *vb);
 int nx_vpu_buf_prepare(struct vb2_buffer *vb);
 void nx_vpu_cleanup_queue(struct list_head *lh, struct vb2_queue *vq);
 
@@ -258,11 +267,11 @@ int alloc_encoder_memory(struct nx_vpu_ctx *ctx);
 int free_encoder_memory(struct nx_vpu_ctx *ctx);
 
 /* For Decoder V4L2 */
-const struct v4l2_ioctl_ops *get_dec_ioctl_ops(bool singlePlane);
+const struct v4l2_ioctl_ops *get_dec_ioctl_ops(bool singlePlaneMode);
 
-int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlane);
+int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlaneMode);
 int vpu_dec_open_instance(struct nx_vpu_ctx *ctx);
-int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx);
+int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode);
 int vpu_dec_init(struct nx_vpu_ctx *ctx);
 int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx);
 

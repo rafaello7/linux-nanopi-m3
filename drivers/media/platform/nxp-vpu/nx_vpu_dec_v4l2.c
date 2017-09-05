@@ -195,9 +195,9 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 			return -EINVAL;
 	}
 
-	pix->pixelformat = ctx->img_fmt.fourcc;
+	pix->pixelformat = ctx->img_fmt->fourcc;
 	pix->field = ctx->codec.dec.interlace_flg[0];
-	fill_fmt_width_height(f, &ctx->img_fmt, ctx->width, ctx->height);
+	fill_fmt_width_height(f, ctx->img_fmt, ctx->width, ctx->height);
 
 	NX_DbgMsg(INFO_MSG, ("vidioc_g_fmt_vid_cap: W = %d, H = %d\n",
 		pix->width, pix->height));
@@ -219,10 +219,11 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 			return -EINVAL;
 	}
 
-	pix_mp->num_planes = ctx->img_fmt.num_planes;
-	pix_mp->pixelformat = ctx->img_fmt.fourcc;
+	pix_mp->num_planes = ctx->useSingleBuf || ctx->img_fmt->hsub == 0 ? 1 :
+		ctx->img_fmt->chromaInterleave ? 2 : 3;
+	pix_mp->pixelformat = ctx->img_fmt->fourcc;
 	pix_mp->field = ctx->codec.dec.interlace_flg[0];
-	fill_fmt_width_height_mplane(f, &ctx->img_fmt, ctx->width, ctx->height);
+	fill_fmt_width_height_mplane(f, ctx->img_fmt, ctx->width, ctx->height);
 
 	/* TBD. Patch for fedora */
 	if (7 == sizeof(pix_mp->reserved)) {
@@ -295,6 +296,11 @@ static int nx_vidioc_try_cap_fmt(struct file *file, void *priv,
 			pix_fmt->pixelformat));
 		return -EINVAL;
 	}
+	if( ! fmt->singleBuffer ) {
+		NX_ErrMsg(("format %.4s is multi-plane, invalid\n",
+			   (const char*)&pix_fmt->pixelformat));
+		return -EINVAL;
+	}
 
 	pix_fmt->field = ctx->codec.dec.interlace_flg[0];
 	fill_fmt_width_height(f, fmt, ctx->width, ctx->height);
@@ -317,8 +323,11 @@ static int nx_vidioc_try_cap_fmt_mplane(struct file *file, void *priv,
 		return -EINVAL;
 	}
 
-	if( pix_fmt_mp->num_planes == 0 || pix_fmt_mp->num_planes > fmt->num_planes )
-		pix_fmt_mp->num_planes = fmt->num_planes;
+	/* num_planes equal to 1 means user proposes to store all planes
+	 * in single buffer */
+	if( pix_fmt_mp->num_planes != 1 )
+		pix_fmt_mp->num_planes = ctx->img_fmt->singleBuffer ? 1 :
+			ctx->img_fmt->chromaInterleave ? 2 : 3;
 	pix_fmt_mp->field = ctx->codec.dec.interlace_flg[0];
 	fill_fmt_width_height_mplane(f, fmt, ctx->width, ctx->height);
 	return 0;
@@ -378,8 +387,8 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 
 	img_fmt = nx_find_image_format(f->fmt.pix.pixelformat);
 
-	ctx->img_fmt = *img_fmt;
-	ctx->img_fmt.num_planes = 1;
+	ctx->img_fmt = img_fmt;
+	ctx->useSingleBuf = true;
 
 	if( img_fmt->hsub ) {
 		ctx->buf_c_width = ctx->buf_y_width / img_fmt->hsub;
@@ -388,7 +397,7 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 		ctx->buf_c_width = 0;
 		ctx->chroma_size = 0;
 	}
-	ctx->chromaInterleave = 0;
+	ctx->chromaInterleave = img_fmt->chromaInterleave;
 
 	return 0;
 }
@@ -414,8 +423,8 @@ static int vidioc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 
 	img_fmt = nx_find_image_format(f->fmt.pix_mp.pixelformat);
 
-	ctx->img_fmt = *img_fmt;
-	ctx->img_fmt.num_planes = pix_fmt_mp->num_planes;
+	ctx->img_fmt = img_fmt;
+	ctx->useSingleBuf = pix_fmt_mp->num_planes == 1;
 
 	if( img_fmt->hsub ) {
 		ctx->buf_c_width = ctx->buf_y_width / img_fmt->hsub;
@@ -424,7 +433,7 @@ static int vidioc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 		ctx->buf_c_width = 0;
 		ctx->chroma_size = 0;
 	}
-	ctx->chromaInterleave = (pix_fmt_mp->num_planes != 2) ? (0) : (1);
+	ctx->chromaInterleave = img_fmt->chromaInterleave;
 
 	return 0;
 }
@@ -816,9 +825,9 @@ static void nx_vpu_dec_stop_streaming(struct vb2_queue *q)
 
 	FUNC_IN();
 
+	ctx->vpu_cmd = SEQ_END;
+	nx_vpu_try_run(ctx);
 	if (q->type == ctx->vq_img.type ) {
-		ctx->vpu_cmd = DEC_BUF_FLUSH;
-		nx_vpu_try_run(ctx);
 
 		spin_lock_irqsave(&dev->irqlock, flags);
 
@@ -838,9 +847,6 @@ static void nx_vpu_dec_stop_streaming(struct vb2_queue *q)
 
 		spin_unlock_irqrestore(&dev->irqlock, flags);
 	}
-
-	ctx->vpu_cmd = SEQ_END;
-	nx_vpu_try_run(ctx);
 }
 
 static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
@@ -863,11 +869,13 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 	} else if (vq->type == ctx->vq_img.type ) {
 		struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
 		unsigned int idx = buf->vb.index;
+		int num_planes = ctx->useSingleBuf || ctx->img_fmt->singleBuffer ? 1 :
+			ctx->img_fmt->chromaInterleave ? 2 : 3;
 
 		buf->planes.raw.y = nx_vpu_mem_plane_addr(ctx, vb, 0);
 		dec_ctx->frame_buf[idx].phyAddr[0] = buf->planes.raw.y;
 
-		if (ctx->img_fmt.num_planes > 1) {
+		if( num_planes > 1 ) {
 			buf->planes.raw.cb = nx_vpu_mem_plane_addr(ctx, vb, 1);
 			dec_ctx->frame_buf[idx].phyAddr[1] = buf->planes.raw.cb;
 		} else if (ctx->chroma_size > 0) {
@@ -875,7 +883,7 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 				dec_ctx->frame_buf[idx].phyAddr[0];
 		}
 
-		if (ctx->img_fmt.num_planes > 2) {
+		if( num_planes > 2 ) {
 			buf->planes.raw.cr = nx_vpu_mem_plane_addr(ctx, vb, 2);
 			dec_ctx->frame_buf[idx].phyAddr[2] = buf->planes.raw.cr;
 		} else if (ctx->chroma_size > 0 && ctx->chromaInterleave == 0) {
@@ -900,7 +908,6 @@ static struct vb2_ops nx_vpu_dec_qops = {
 	.queue_setup            = nx_vpu_queue_setup,
 	.wait_prepare           = nx_vpu_unlock,
 	.wait_finish            = nx_vpu_lock,
-	.buf_init               = nx_vpu_buf_init,
 	.buf_prepare            = nx_vpu_buf_prepare,
 	.start_streaming        = nx_vpu_dec_start_streaming,
 	.stop_streaming         = nx_vpu_dec_stop_streaming,
@@ -910,12 +917,13 @@ static struct vb2_ops nx_vpu_dec_qops = {
 /* -------------------------------------------------------------------------- */
 
 
-const struct v4l2_ioctl_ops *get_dec_ioctl_ops(bool singlePlane)
+const struct v4l2_ioctl_ops *get_dec_ioctl_ops(bool singlePlaneMode)
 {
-	return singlePlane ? &nx_vpu_dec_ioctl_ops : &nx_vpu_dec_ioctl_ops_mplane;
+	return singlePlaneMode ? &nx_vpu_dec_ioctl_ops :
+		&nx_vpu_dec_ioctl_ops_mplane;
 }
 
-int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlane)
+int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlaneMode)
 {
 	int ret = 0;
 
@@ -924,7 +932,7 @@ int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlane)
 	ctx->codec.dec.dpb_queue_cnt = 0;
 
 	/* Init videobuf2 queue for OUTPUT */
-	ctx->vq_strm.type = singlePlane ? V4L2_BUF_TYPE_VIDEO_OUTPUT :
+	ctx->vq_strm.type = singlePlaneMode ? V4L2_BUF_TYPE_VIDEO_OUTPUT :
 		V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	ctx->vq_strm.drv_priv = ctx;
 	ctx->vq_strm.lock = &ctx->dev->dev_mutex;
@@ -942,7 +950,7 @@ int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlane)
 	}
 
 	/* Init videobuf2 queue for CAPTURE */
-	ctx->vq_img.type = singlePlane ? V4L2_BUF_TYPE_VIDEO_CAPTURE :
+	ctx->vq_img.type = singlePlaneMode ? V4L2_BUF_TYPE_VIDEO_CAPTURE :
 		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	ctx->vq_img.drv_priv = ctx;
 	ctx->vq_img.lock = &ctx->dev->dev_mutex;
@@ -1089,7 +1097,7 @@ err_exit:
 	return ret;
 }
 
-int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx)
+int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode)
 {
 	int ret;
 	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
@@ -1170,13 +1178,13 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx)
 
 	switch (seqArg.imgFormat) {
 	case IMG_FORMAT_420:
-		fourcc = V4L2_PIX_FMT_YUV420M;
+		fourcc = singlePlaneMode ? V4L2_PIX_FMT_YUV420 : V4L2_PIX_FMT_YUV420M;
 		break;
 	case IMG_FORMAT_422:
-		fourcc = V4L2_PIX_FMT_YUV422M;
+		fourcc = singlePlaneMode ? V4L2_PIX_FMT_YUV422P : V4L2_PIX_FMT_YUV422M;
 		break;
 	case IMG_FORMAT_444:
-		fourcc = V4L2_PIX_FMT_YUV444M;
+		fourcc = singlePlaneMode ? V4L2_PIX_FMT_YUV444 : V4L2_PIX_FMT_YUV444M;
 		break;
 	case IMG_FORMAT_400:
 		fourcc = V4L2_PIX_FMT_GREY;
@@ -1190,7 +1198,12 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx)
 		NX_ErrMsg(("internal error: format %.4s not found\n", (char*)&fourcc));
 		return -EINVAL;
 	}
-	ctx->img_fmt = *img_fmt;
+	if( singlePlaneMode && ! img_fmt->singleBuffer ) {
+		NX_ErrMsg(("internal error: format %.4s is multi-plane\n",
+					(char*)&fourcc));
+		return -EINVAL;
+	}
+	ctx->img_fmt = img_fmt;
 	if( img_fmt->hsub ) {
 		ctx->buf_c_width = ctx->buf_y_width / img_fmt->hsub;
 		ctx->chroma_size = ctx->buf_c_width * ctx->buf_height / img_fmt->vsub;
@@ -1198,7 +1211,7 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx)
 		ctx->buf_c_width = 0;
 		ctx->chroma_size = 0;
 	}
-	ctx->chromaInterleave = img_fmt->num_planes == 2;
+	ctx->chromaInterleave = img_fmt->chromaInterleave;
 
 	dec_ctx->start_Addr = 0;
 	dec_ctx->end_Addr = seqArg.strmReadPos;
