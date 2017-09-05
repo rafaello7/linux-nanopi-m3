@@ -44,6 +44,13 @@
 
 #define PS_SAVE_SIZE (320 * 1024)
 
+static bool holes_for_nxvideodec;
+module_param(holes_for_nxvideodec, bool, 0644);
+MODULE_PARM_DESC(holes_for_nxvideodec, "run in mode for nxvideodec gstreamer plugin");
+
+static unsigned additional_buffer_count = 2;
+module_param(additional_buffer_count, uint, 0644);
+MODULE_PARM_DESC(additional_buffer_count, "number of buffers beyound minimum required by coda vpu");
 
 static int nx_vpu_dec_ctx_ready(struct nx_vpu_ctx *ctx)
 {
@@ -344,11 +351,8 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 		if (reqbufs->count == 0)
 			return vb2_reqbufs(&ctx->vq_img, reqbufs);
 
-		/* TBD. Additional frame buffer count */
-		if (reqbufs->count < ctx->codec.dec.frame_buffer_cnt) {
-			NX_ErrMsg(("v4l2_requestbuffers : count error\n"));
+		if (reqbufs->count < ctx->codec.dec.frame_buffer_cnt)
 			reqbufs->count = ctx->codec.dec.frame_buffer_cnt;
-		}
 
 		ret = vb2_reqbufs(&ctx->vq_img, reqbufs);
 		if (ret != 0) {
@@ -365,6 +369,16 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 	return 0;
 }
 
+static int handle_end_of_stream(struct nx_vpu_ctx *ctx)
+{
+	int ret;
+
+	ctx->codec.dec.flush = 1;
+	ret = nx_vpu_try_run(ctx);
+
+	return ret;
+}
+
 static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
@@ -373,15 +387,12 @@ static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 	FUNC_IN();
 
 	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		if ((buf->m.planes[0].bytesused == 0)
-			&& (ctx->is_initialized)) {
-				ctx->codec.dec.flush = 1;
-				return ctx->vq_strm.ops->start_streaming(
-					&ctx->vq_strm, buf->flags);
-			} else {
-				ctx->codec.dec.flush = 0;
-				return vb2_qbuf(&ctx->vq_strm, buf);
-			}
+		if ((buf->m.planes[0].bytesused == 0) && (ctx->is_initialized)) {
+			return handle_end_of_stream(ctx);
+		} else {
+			ctx->codec.dec.flush = 0;
+			return vb2_qbuf(&ctx->vq_strm, buf);
+		}
 	} else {
 		if (ctx->is_initialized) {
 			struct vpu_dec_clr_dsp_flag_arg clrFlagArg;
@@ -412,7 +423,7 @@ static int vidioc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		ret = vb2_dqbuf(&ctx->vq_strm, buf, file->f_flags & O_NONBLOCK);
 	} else {
-		if (ctx->codec.dec.delay_frm == 0) {
+		if ( !holes_for_nxvideodec || ctx->codec.dec.delay_frm == 0) {
 			ret = vb2_dqbuf(&ctx->vq_img, buf, file->f_flags &
 				O_NONBLOCK);
 		} else if (ctx->codec.dec.delay_frm == 1) {
@@ -525,6 +536,24 @@ static int nx_vidioc_expbuf(struct file *file, void *fh,
 	}
 }
 
+static int nx_vidioc_try_decoder_cmd(struct file *file, void *fh,
+				      struct v4l2_decoder_cmd *a)
+{
+	if( a->cmd == V4L2_DEC_CMD_STOP )
+		return 0;
+	return -EINVAL;
+}
+
+static int nx_vidioc_decoder_cmd(struct file *file, void *fh,
+				  struct v4l2_decoder_cmd *a)
+{
+	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
+
+	if( a->cmd != V4L2_DEC_CMD_STOP )
+		return -EINVAL;
+	return handle_end_of_stream(ctx);
+}
+
 static const struct v4l2_ioctl_ops nx_vpu_dec_ioctl_ops = {
 	.vidioc_querycap = vidioc_querycap,
 	.vidioc_enum_fmt_vid_cap = nx_vidioc_enum_fmt_vid_image,
@@ -550,6 +579,8 @@ static const struct v4l2_ioctl_ops nx_vpu_dec_ioctl_ops = {
 	.vidioc_g_crop = vidioc_g_crop,
 	.vidioc_g_ext_ctrls = vidioc_g_ext_ctrls,
 	.vidioc_expbuf = nx_vidioc_expbuf,
+	.vidioc_try_decoder_cmd	= nx_vidioc_try_decoder_cmd,
+	.vidioc_decoder_cmd = nx_vidioc_decoder_cmd,
 };
 
 /* -------------------------------------------------------------------------- */
@@ -576,15 +607,12 @@ static void cleanup_dpb_queue(struct nx_vpu_ctx *ctx)
 static int nx_vpu_dec_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct nx_vpu_ctx *ctx = q->drv_priv;
-	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
 	int ret = 0;
 
 	FUNC_IN();
 
-	if ((dec_ctx->flush) || (nx_vpu_dec_ctx_ready(ctx))) {
-		dec_ctx->eos_tag = count;
+	if ( nx_vpu_dec_ctx_ready(ctx) )
 		ret = nx_vpu_try_run(ctx);
-	}
 
 	return ret;
 }
@@ -938,7 +966,7 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx)
 
 	ctx->width = seqArg.cropRight;
 	ctx->height = seqArg.cropBottom;
-	dec_ctx->frame_buffer_cnt = seqArg.minFrameBufCnt;
+	dec_ctx->frame_buffer_cnt = seqArg.minFrameBufCnt + additional_buffer_count;
 
 	dec_ctx->interlace_flg[0] = (seqArg.interlace == 0) ?
 		(V4L2_FIELD_NONE) : (V4L2_FIELD_INTERLACED);
@@ -1181,14 +1209,14 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 		decArg.strmData = (unsigned long)vb2_plane_vaddr(&buf->vb, 0);
 #endif
 
-		decArg.eos = vbuf->flags;
+		decArg.eos = 0;
 		timestamp = vbuf->vb2_buf.timestamp;
 
 		/* spin_unlock_irqrestore(&dev->irqlock, flags); */
 	} else {
 		decArg.strmDataSize = 0;
 		decArg.strmData = 0;
-		decArg.eos = dec_ctx->eos_tag;
+		decArg.eos = 1;
 
 		timestamp = 0;
 	}
@@ -1288,6 +1316,8 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 		vbuf->field = dec_ctx->interlace_flg[idx];
 		vbuf->flags = dec_ctx->frm_type[idx];
 		vbuf->vb2_buf.timestamp = dec_ctx->timeStamp[idx];
+		if( dec_ctx->flush )
+			vbuf->flags |= V4L2_BUF_FLAG_LAST;
 
 		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
 	}

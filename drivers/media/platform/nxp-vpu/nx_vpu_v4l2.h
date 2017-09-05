@@ -96,7 +96,6 @@ struct vpu_enc_ctx {
 
 struct vpu_dec_ctx {
 	int flush;
-	int eos_tag;
 	int delay_frm;
 	int frame_buf_delay;
 	int cur_reliable;
@@ -133,14 +132,12 @@ struct vpu_dec_ctx {
 };
 
 struct nx_vpu_image_fmt {
-	char *name;
 	unsigned int fourcc;
 	unsigned int num_planes;
 	unsigned hsub, vsub;
 };
 
 struct nx_vpu_stream_fmt {
-	char *name;
 	unsigned int fourcc;
 };
 

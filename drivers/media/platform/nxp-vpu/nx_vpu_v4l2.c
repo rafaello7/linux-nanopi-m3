@@ -219,61 +219,51 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
  *----------------------------------------------------------------------------*/
 static const struct nx_vpu_image_fmt image_formats[] = {
 	{
-		.name = "YUV 4:2:0 3 Planes",
 		.fourcc = V4L2_PIX_FMT_YUV420M,
 		.num_planes = 3,
 		.hsub = 2, .vsub = 2,
 	},
 	{
-		.name = "YUV 4:2:2 3 Planes",
 		.fourcc = V4L2_PIX_FMT_YUV422M,
 		.num_planes = 3,
 		.hsub = 2, .vsub = 1,
 	},
 	{
-		.name = "YUV 4:4:4 3 Planes",
 		.fourcc = V4L2_PIX_FMT_YUV444M,
 		.num_planes = 3,
 		.hsub = 1, .vsub = 1,
 	},
 	{
-		.name = "Grey 1 Planes",
 		.fourcc = V4L2_PIX_FMT_GREY,
 		.num_planes = 1,
 		.hsub = 0, .vsub = 0,
 	},
 	{
-		.name = "YUV 4:2:0 2 Planes Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV12M,
 		.num_planes = 2,
 		.hsub = 2, .vsub = 2,
 	},
 	{
-		.name = "YUV 4:2:0 2 Planes Y/CrCb",
 		.fourcc = V4L2_PIX_FMT_NV21M,
 		.num_planes = 2,
 		.hsub = 2, .vsub = 2,
 	},
 	{
-		.name = "YUV 4:2:2 2 Planes Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV16M,
 		.num_planes = 2,
 		.hsub = 2, .vsub = 1,
 	},
 	{
-		.name = "YUV 4:2:2 2 Planes Y/CrCb",
 		.fourcc = V4L2_PIX_FMT_NV61M,
 		.num_planes = 2,
 		.hsub = 2, .vsub = 1,
 	},
 	{
-		.name = "YUV 4:4:4 2 Planes Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV24M,
 		.num_planes = 2,
 		.hsub = 1, .vsub = 1,
 	},
 	{
-		.name = "YUV 4:4:4 2 Planes Y/CrCb",
 		.fourcc = V4L2_PIX_FMT_NV42M,
 		.num_planes = 2,
 		.hsub = 1, .vsub = 1,
@@ -282,75 +272,57 @@ static const struct nx_vpu_image_fmt image_formats[] = {
 
 static const struct nx_vpu_stream_fmt stream_formats[] = {
 	{
-		.name = "MPEG2 Stream",
 		.fourcc = V4L2_PIX_FMT_MPEG2,
 	},
 	{
-		.name = "MPEG4 Stream",
 		.fourcc = V4L2_PIX_FMT_MPEG4,
 	},
 	{
-		.name = "XVID Stream",
 		.fourcc = V4L2_PIX_FMT_XVID,
 	},
 	{
-		.name = "DIV3 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV3,
 	},
 	{
-		.name = "DIV4 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV4,
 	},
 	{
-		.name = "DIV5 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV5,
 	},
 	{
-		.name = "DIV6 Stream",
 		.fourcc = V4L2_PIX_FMT_DIV6,
 	},
 	{
-		.name = "DIVX Stream",
 		.fourcc = V4L2_PIX_FMT_DIVX,
 	},
 	{
-		.name = "H263 Stream",
 		.fourcc = V4L2_PIX_FMT_H263,
 	},
 	{
-		.name = "H264 Stream",
 		.fourcc = V4L2_PIX_FMT_H264,
 	},
 	{
-		.name = "WMV9 Stream",
 		.fourcc = V4L2_PIX_FMT_WMV9,
 	},
 	{
-		.name = "VC1 Stream",
 		.fourcc = V4L2_PIX_FMT_WVC1,
 	},
 	{
-		.name = "RV8 Stream",
 		.fourcc = V4L2_PIX_FMT_RV8,
 	},
 	{
-		.name = "RV9/10 Stream",
 		.fourcc = V4L2_PIX_FMT_RV9,
 	},
 	{
-		.name = "VP8 Stream",
 		.fourcc = V4L2_PIX_FMT_VP8,
 	},
 	{
-		.name = "SORENSON SPARK Stream",
 		.fourcc = V4L2_PIX_FMT_FLV1,
 	},
 	{
-		.name = "THEORA Stream",
 		.fourcc = V4L2_PIX_FMT_THEORA,
 	},
 	{
-		.name = "JPEG Stream",
 		.fourcc = V4L2_PIX_FMT_MJPEG,
 	},
 };
@@ -394,10 +366,7 @@ static int nx_vidioc_enum_image_fmt(struct v4l2_fmtdesc *f, bool mplane)
 
 		if (j == f->index) {
 			fmt = &image_formats[i];
-			strlcpy(f->description, fmt->name,
-				sizeof(f->description));
 			f->pixelformat = fmt->fourcc;
-
 			return 0;
 		}
 
@@ -417,8 +386,6 @@ static int nx_vidioc_enum_stream_fmt(struct v4l2_fmtdesc *f, bool mplane)
 	for (i = 0; i < ARRAY_SIZE(stream_formats); ++i) {
 		if (j == f->index) {
 			fmt = &stream_formats[i];
-			strlcpy(f->description, fmt->name,
-				sizeof(f->description));
 			f->pixelformat = fmt->fourcc;
 
 			return 0;
