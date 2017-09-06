@@ -189,8 +189,9 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 
 	FUNC_IN();
 
-	if ((ctx->width == 0) || (ctx->height == 0) ||
-		(ctx->codec.dec.frame_buffer_cnt == 0)) {
+	if( ctx->img_fmt == NULL || ctx->width == 0 || ctx->height == 0 ||
+			ctx->codec.dec.frame_buffer_cnt == 0 )
+	{
 			NX_ErrMsg(("There is not cfg information!!"));
 			return -EINVAL;
 	}
@@ -213,8 +214,9 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 
 	FUNC_IN();
 
-	if ((ctx->width == 0) || (ctx->height == 0) ||
-		(ctx->codec.dec.frame_buffer_cnt == 0)) {
+	if( ctx->img_fmt == NULL || ctx->width == 0 || ctx->height == 0 ||
+			ctx->codec.dec.frame_buffer_cnt == 0 )
+	{
 			NX_ErrMsg(("There is not cfg information!!"));
 			return -EINVAL;
 	}
@@ -326,8 +328,8 @@ static int nx_vidioc_try_cap_fmt_mplane(struct file *file, void *priv,
 	/* num_planes equal to 1 means user proposes to store all planes
 	 * in single buffer */
 	if( pix_fmt_mp->num_planes != 1 )
-		pix_fmt_mp->num_planes = ctx->img_fmt->singleBuffer ? 1 :
-			ctx->img_fmt->chromaInterleave ? 2 : 3;
+		pix_fmt_mp->num_planes = fmt->singleBuffer ? 1 :
+			fmt->chromaInterleave ? 2 : 3;
 	pix_fmt_mp->field = ctx->codec.dec.interlace_flg[0];
 	fill_fmt_width_height_mplane(f, fmt, ctx->width, ctx->height);
 	return 0;
