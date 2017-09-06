@@ -221,11 +221,18 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
  *----------------------------------------------------------------------------*/
 static const struct nx_vpu_image_fmt image_formats[] = {
 	{
+		.fourcc = V4L2_PIX_FMT_YUV420M,
+		.hsub = 2, .vsub = 2,
+		.chromaInterleave = false,
+		.singleBuffer = false,
+	},
+	{
 		.fourcc = V4L2_PIX_FMT_YUV420,
 		.hsub = 2, .vsub = 2,
 		.chromaInterleave = false,
 		.singleBuffer = true,
 	},
+#if 0
 	{
 		.fourcc = V4L2_PIX_FMT_YUV422P,
 		.hsub = 2, .vsub = 1,
@@ -242,12 +249,6 @@ static const struct nx_vpu_image_fmt image_formats[] = {
 		.fourcc = V4L2_PIX_FMT_GREY,
 		.hsub = 0, .vsub = 0,
 		.singleBuffer = true,
-	},
-	{
-		.fourcc = V4L2_PIX_FMT_YUV420M,
-		.hsub = 2, .vsub = 2,
-		.chromaInterleave = false,
-		.singleBuffer = false,
 	},
 	{
 		.fourcc = V4L2_PIX_FMT_YUV422M,
@@ -297,6 +298,7 @@ static const struct nx_vpu_image_fmt image_formats[] = {
 		.chromaInterleave = true,
 		.singleBuffer = false,
 	},
+#endif
 };
 
 static const struct nx_vpu_stream_fmt stream_formats[] = {
@@ -382,39 +384,6 @@ const struct nx_vpu_stream_fmt *nx_find_stream_format(struct v4l2_format *f)
 	return NULL;
 }
 
-static int nx_vidioc_enum_image_fmt(struct v4l2_fmtdesc *f, bool mplane)
-{
-	if( f->index >= ARRAY_SIZE(image_formats) )
-		return -EINVAL;
-	if( !mplane && !image_formats[f->index].singleBuffer )
-		return -EINVAL;
-	f->pixelformat = image_formats[f->index].fourcc;
-	return 0;
-}
-
-static int nx_vidioc_enum_stream_fmt(struct v4l2_fmtdesc *f, bool mplane)
-{
-	const struct nx_vpu_stream_fmt *fmt;
-	int i, j = 0;
-
-	FUNC_IN();
-
-	for (i = 0; i < ARRAY_SIZE(stream_formats); ++i) {
-		if (j == f->index) {
-			fmt = &stream_formats[i];
-			f->pixelformat = fmt->fourcc;
-
-			return 0;
-		}
-
-		++j;
-	}
-
-	return -EINVAL;
-}
-/* -------------------------------------------------------------------------- */
-
-
 /*-----------------------------------------------------------------------------
  *      functions for vidioc_queryctrl
  *----------------------------------------------------------------------------*/
@@ -442,29 +411,44 @@ int vidioc_querycap(struct file *file, void *priv, struct v4l2_capability *cap)
 int nx_vidioc_enum_fmt_vid_image(struct file *file, void *pirv,
 	struct v4l2_fmtdesc *f)
 {
-	FUNC_IN();
-	return nx_vidioc_enum_image_fmt(f, false);
+	int i, j = -1;
+
+	for( i = 0; i < ARRAY_SIZE(image_formats); ++i ) {
+		if( image_formats[i].singleBuffer ) {
+			if( ++j == f->index ) {
+				f->pixelformat = image_formats[i].fourcc;
+				return 0;
+			}
+		}
+	}
+	return -EINVAL;
 }
 
 int nx_vidioc_enum_fmt_vid_image_mplane(struct file *file, void *pirv,
 	struct v4l2_fmtdesc *f)
 {
-	FUNC_IN();
-	return nx_vidioc_enum_image_fmt(f, true);
+	if( f->index >= ARRAY_SIZE(image_formats) )
+		return -EINVAL;
+	f->pixelformat = image_formats[f->index].fourcc;
+	return 0;
 }
 
 int nx_vidioc_enum_fmt_vid_stream(struct file *file, void *prov,
 	struct v4l2_fmtdesc *f)
 {
-	FUNC_IN();
-	return nx_vidioc_enum_stream_fmt(f, false);
+	if( f->index >= ARRAY_SIZE(stream_formats) )
+		return -EINVAL;
+	f->pixelformat = stream_formats[f->index].fourcc;
+	return 0;
 }
 
 int nx_vidioc_enum_fmt_vid_stream_mplane(struct file *file, void *priv,
 	struct v4l2_fmtdesc *f)
 {
-	FUNC_IN();
-	return nx_vidioc_enum_stream_fmt(f, true);
+	if( f->index >= ARRAY_SIZE(stream_formats) )
+		return -EINVAL;
+	f->pixelformat = stream_formats[f->index].fourcc;
+	return 0;
 }
 
 int nx_vidioc_enum_framesizes(struct file *file, void *priv,
