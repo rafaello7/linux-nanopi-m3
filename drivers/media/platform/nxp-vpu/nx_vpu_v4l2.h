@@ -221,7 +221,6 @@ struct nx_vpu_buf {
 		} raw;
 		dma_addr_t stream;
 	} planes;
-	int used;
 };
 
 

@@ -61,8 +61,7 @@ static int nx_vpu_dec_ctx_ready(struct nx_vpu_ctx *ctx)
 	switch( ctx->vpu_cmd ) {
 	case SET_FRAME_BUF:
 		/* we need all buffers to configure VPU rotator */
-		return ctx->vq_img.start_streaming_called &&
-			dec_ctx->dpb_queue_cnt == dec_ctx->frame_buffer_cnt;
+		return ctx->vq_img.streaming && dec_ctx->dpb_queue_cnt == dec_ctx->frame_buffer_cnt;
 	case DEC_RUN:
 		dec_ctx->delay_frm = 1;
 		/* VPU refuses to decode slice when lacks at least two buffers from
@@ -808,7 +807,6 @@ static void nx_vpu_dec_stop_streaming(struct vb2_queue *q)
 	ctx->vpu_cmd = SEQ_END;
 	nx_vpu_try_run(ctx);
 	if (q->type == ctx->vq_img.type ) {
-
 		spin_lock_irqsave(&dev->irqlock, flags);
 		cleanup_dpb_queue(ctx, VB2_BUF_STATE_ERROR);
 		spin_unlock_irqrestore(&dev->irqlock, flags);
@@ -833,8 +831,6 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 	struct nx_vpu_buf *buf = vb_to_vpu_buf(vb);
 
 	FUNC_IN();
-
-	buf->used = 0;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
@@ -1108,7 +1104,6 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode)
 		}
 
 		buf = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
-		buf->used = 1;
 		phyAddr = nx_vpu_mem_plane_addr(ctx, &buf->vb, 0);
 		seqArg.seqDataSize = buf->vb.planes[0].bytesused;
 
@@ -1357,12 +1352,11 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 	u64 timestamp;
 	struct vpu_dec_frame_arg decArg;
 	struct nx_vpu_v4l2 *dev = ctx->dev;
-	struct nx_vpu_buf *buf, *doneBuf = NULL;
+	struct nx_vpu_buf *strmBuf, *doneBuf = NULL;
 	struct vb2_v4l2_buffer *vbuf;
 	void *strmData;
 	unsigned strmDataSize;
 
-	FUNC_IN();
 
 	if (ctx->hInst == NULL) {
 		NX_ErrMsg(("Err : vpu is not opend\n"));
@@ -1383,37 +1377,38 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 			return -EAGAIN;
 		}
 
-		buf = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
-		vbuf = to_vb2_v4l2_buffer(&buf->vb);
-		buf->used = 1;
-		phyAddr = nx_vpu_mem_plane_addr(ctx, &buf->vb, 0);
-		strmDataSize = vb2_get_plane_payload(&buf->vb, 0);
+		strmBuf = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
+		vbuf = to_vb2_v4l2_buffer(&strmBuf->vb);
+		phyAddr = nx_vpu_mem_plane_addr(ctx, &strmBuf->vb, 0);
+		strmDataSize = vb2_get_plane_payload(&strmBuf->vb, 0);
 		alignSz = (strmDataSize + 4095) & (~4095);
 #ifdef USE_ION_MEMORY
 		strmData = cma_get_virt(phyAddr, alignSz, 1);
 #else
-		strmData = vb2_plane_vaddr(&buf->vb, 0);
+		strmData = vb2_plane_vaddr(&strmBuf->vb, 0);
 #endif
 
 		decArg.eos = 0;
 		timestamp = vbuf->vb2_buf.timestamp;
 
 		/* spin_unlock_irqrestore(&dev->irqlock, flags); */
-	} else {
-		strmDataSize = 0;
-		strmData = 0;
-		decArg.eos = 1;
 
+		if( strmDataSize ) {
+			ret = NX_VpuFillStreamBuffer(ctx->hInst, strmData, strmDataSize);
+			if( ret != VPU_RET_OK ) {
+				NX_ErrMsg(("NX_VpuFillStreamBuffer() failed. (ErrorCode=%d)\n", ret));
+				return ret;
+			}
+		}
+		list_del(&strmBuf->list);
+		ctx->strm_queue_cnt--;
+		vb2_buffer_done(&strmBuf->vb, VB2_BUF_STATE_DONE);
+	} else {
+		decArg.eos = 1;
 		timestamp = 0;
 	}
 
 	dec_ctx->start_Addr = dec_ctx->end_Addr;
-
-	ret = NX_VpuFillStreamBuffer(ctx->hInst, strmData, strmDataSize);
-	if( ret != VPU_RET_OK ) {
-		NX_ErrMsg(("NX_VpuFillStreamBuffer() failed. (ErrorCode=%d)\n", ret));
-		return ret;
-	}
 
 	ret = NX_VpuDecRunFrame(ctx->hInst, &decArg);
 	if (ret != VPU_RET_OK) {
@@ -1471,15 +1466,6 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 	}
 
 	spin_lock_irqsave(&dev->irqlock, flags);
-
-	if (ctx->strm_queue_cnt > 0) {
-		buf = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
-		if (buf->used) {
-			list_del(&buf->list);
-			ctx->strm_queue_cnt--;
-		}
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
-	}
 
 	if( doneBuf ) {
 		int idx = decArg.indexFrameDisplay;

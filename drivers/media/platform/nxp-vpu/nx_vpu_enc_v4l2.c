@@ -1073,7 +1073,6 @@ static void nx_vpu_enc_buf_queue(struct vb2_buffer *vb)
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		buf->used = 0;
 
 		NX_DbgMsg(INFO_MSG, ("adding to dst: %p (%08lx, %08lx)\n", vb,
 			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 0),
@@ -1082,7 +1081,6 @@ static void nx_vpu_enc_buf_queue(struct vb2_buffer *vb)
 		list_add_tail(&buf->list, &ctx->strm_queue);
 		ctx->strm_queue_cnt++;
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		buf->used = 0;
 		NX_DbgMsg(INFO_MSG, ("adding to src: %p(%08lx, %08lx)\n",
 			vb, (unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 0),
 			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 1)));
@@ -1235,7 +1233,6 @@ static void get_stream_buffer(struct nx_vpu_ctx *ctx,
 	/* spin_lock_irqsave(&ctx->dev->irqlock, flags); */
 
 	dst_mb = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
-	dst_mb->used = 1;
 
 	stream_buf->phyAddr = nx_vpu_mem_plane_addr(ctx, &dst_mb->vb, 0);
 	stream_buf->size = vb2_plane_size(&dst_mb->vb, 0);
@@ -1474,7 +1471,6 @@ int vpu_enc_encode_frame(struct nx_vpu_ctx *ctx)
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	mb_entry = list_entry(ctx->img_queue.next, struct nx_vpu_buf, list);
-	mb_entry->used = 1;
 
 	num_planes = ctx->useSingleBuf || ctx->img_fmt->singleBuffer ? 1 :
 		ctx->img_fmt->chromaInterleave ? 2 : 3;
