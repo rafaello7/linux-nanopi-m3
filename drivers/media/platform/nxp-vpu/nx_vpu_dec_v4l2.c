@@ -61,7 +61,8 @@ static int nx_vpu_dec_ctx_ready(struct nx_vpu_ctx *ctx)
 	switch( ctx->vpu_cmd ) {
 	case SET_FRAME_BUF:
 		/* we need all buffers to configure VPU rotator */
-		return ctx->vq_img.streaming && dec_ctx->dpb_queue_cnt == dec_ctx->frame_buffer_cnt;
+		return ctx->vq_img.start_streaming_called &&
+			dec_ctx->dpb_queue_cnt == dec_ctx->frame_buffer_cnt;
 	case DEC_RUN:
 		dec_ctx->delay_frm = 1;
 		/* VPU refuses to decode slice when lacks at least two buffers from
