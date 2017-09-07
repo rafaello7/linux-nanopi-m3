@@ -998,14 +998,10 @@ static unsigned int nx_vpu_poll(struct file *file, struct poll_table_struct
 	*wait)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
-	int ret;
-
-	FUNC_IN();
+	unsigned ret;
 
 	ret = vb2_poll(&ctx->vq_img, file, wait);
-	if (ret == 0)
-		ret = vb2_poll(&ctx->vq_strm, file, wait);
-
+	ret |= vb2_poll(&ctx->vq_strm, file, wait);
 	return ret;
 }
 
