@@ -44,6 +44,9 @@
 #define INFO_MSG				0
 #define RECON_CHROMA_INTERLEAVE			0
 
+static int free_encoder_memory(struct nx_vpu_ctx*);
+static int alloc_encoder_memory(struct nx_vpu_ctx*);
+
 
 static int nx_vpu_enc_ctx_ready(struct nx_vpu_ctx *ctx)
 {
@@ -1006,11 +1009,11 @@ static const struct v4l2_ioctl_ops nx_vpu_enc_ioctl_ops = {
 	.vidioc_s_fmt_vid_cap_mplane = vidioc_s_fmt,
 	.vidioc_s_fmt_vid_out_mplane = vidioc_s_fmt,
 	.vidioc_reqbufs = vidioc_reqbufs,
-	.vidioc_querybuf = vidioc_querybuf,
+	.vidioc_querybuf = nx_vpu_vidioc_querybuf,
 	.vidioc_qbuf = vidioc_qbuf,
 	.vidioc_dqbuf = vidioc_dqbuf,
-	.vidioc_streamon = vidioc_streamon,
-	.vidioc_streamoff = vidioc_streamoff,
+	.vidioc_streamon = nx_vpu_vidioc_streamon,
+	.vidioc_streamoff = nx_vpu_vidioc_streamoff,
 	.vidioc_queryctrl = vidioc_queryctrl,
 	.vidioc_g_ctrl = vidioc_g_ctrl,
 	.vidioc_s_ctrl = vidioc_s_ctrl,
@@ -1043,11 +1046,13 @@ static void nx_vpu_enc_stop_streaming(struct vb2_queue *q)
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		nx_vpu_cleanup_queue(&ctx->strm_queue, &ctx->vq_strm);
+		nx_vpu_cleanup_queue(&ctx->strm_queue, &ctx->vq_strm,
+				VB2_BUF_STATE_ERROR);
 		INIT_LIST_HEAD(&ctx->strm_queue);
 		ctx->strm_queue_cnt = 0;
 	} else if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		nx_vpu_cleanup_queue(&ctx->img_queue, &ctx->vq_img);
+		nx_vpu_cleanup_queue(&ctx->img_queue, &ctx->vq_img,
+				VB2_BUF_STATE_ERROR);
 		INIT_LIST_HEAD(&ctx->img_queue);
 		ctx->img_queue_cnt = 0;
 	}
@@ -1378,8 +1383,6 @@ int vpu_enc_init(struct nx_vpu_ctx *ctx)
 
 	enc_ctx->gop_frm_cnt = 0;
 
-	ctx->is_initialized = 1;
-
 ERROR_EXIT:
 	return ret;
 }
@@ -1561,7 +1564,7 @@ int vpu_enc_encode_frame(struct nx_vpu_ctx *ctx)
 	return ret;
 }
 
-int alloc_encoder_memory(struct nx_vpu_ctx *ctx)
+static int alloc_encoder_memory(struct nx_vpu_ctx *ctx)
 {
 	int width, height, i;
 	struct vpu_enc_ctx *enc_ctx = &ctx->codec.enc;
@@ -1620,7 +1623,7 @@ Error_Exit:
 	return -1;
 }
 
-int free_encoder_memory(struct nx_vpu_ctx *ctx)
+static int free_encoder_memory(struct nx_vpu_ctx *ctx)
 {
 	struct vpu_enc_ctx *enc_ctx = &ctx->codec.enc;
 
@@ -1654,3 +1657,18 @@ int free_encoder_memory(struct nx_vpu_ctx *ctx)
 
 	return 0;
 }
+
+void nx_vpu_enc_close_instance(struct nx_vpu_ctx *ctx)
+{
+	struct nx_vpu_v4l2 *dev = ctx->dev;
+
+	if (ctx->hInst) {
+		int ret = NX_VpuEncClose(ctx->hInst, (void*)&dev->vpu_event_present);
+		if (ret != 0)
+			NX_ErrMsg(("Failed to return an instance.\n"));
+		free_encoder_memory(ctx);
+		--dev->cur_num_instance;
+		ctx->hInst = NULL;
+	}
+}
+

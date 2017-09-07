@@ -314,8 +314,6 @@ struct vp8_pic_info {
 
 struct vpu_dec_frame_arg {
 	/* Input Arguments */
-	uint64_t strmData;
-	int32_t strmDataSize;
 	int32_t iFrameSearchEnable;
 	int32_t skipFrameMode;
 	int32_t decSkipFrameNum;

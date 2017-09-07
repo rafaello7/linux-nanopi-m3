@@ -50,6 +50,11 @@
 static bool single_plane_mode;
 module_param(single_plane_mode, bool, 0444);
 
+static unsigned additional_buffer_count = 2;
+module_param(additional_buffer_count, uint, 0644);
+MODULE_PARM_DESC(additional_buffer_count,
+		"number of buffers above minimum required by coda vpu");
+
 #define INFO_MSG		0
 
 #ifdef CONFIG_ARM_S5Pxx18_DEVFREQ
@@ -110,10 +115,11 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 		if (ctx->is_initialized == 0) {
 			ret = vpu_enc_init(ctx);
 			if (ret != 0)
-				dev_err(err, "enc_init is failed, ret=%d\n",
-					ret);
-			else
+				dev_err(err, "enc_init failed, ret=%d\n", ret);
+			else{
+				ctx->is_initialized = 1;
 				vpu_enc_get_seq_info(ctx);
+			}
 		} else {
 			ret = vpu_enc_encode_frame(ctx);
 			if (ret != 0) {
@@ -125,46 +131,37 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 		break;
 
 	case GET_DEC_INSTANCE:
-		dev->curr_ctx = ctx->idx;
-		ret = vpu_dec_open_instance(ctx);
-		if (ret != 0)
-			dev_err(err, "Failed to create a new instance.\n");
-		else
-			ctx->vpu_cmd = SEQ_INIT;
-		break;
-
-	case SEQ_INIT:
-		if (ctx->is_initialized == 0) {
-			ret = vpu_dec_parse_vid_cfg(ctx, single_plane_mode);
-			if (ret != 0) {
-				dev_err(err, "vpu_dec_parse_vfg() is ");
-				dev_err(err, "failed, ret = %d\n", ret);
-				break;
+		if( ! ctx->is_initialized ) {
+			dev->curr_ctx = ctx->idx;
+			ret = vpu_dec_open_instance(ctx);
+			if (ret != 0)
+				dev_err(err, "Failed to create a new instance.\n");
+			else{
+				ret = vpu_dec_parse_vid_cfg(ctx, single_plane_mode);
+				if (ret != 0) {
+					dev_err(err, "vpu_dec_parse_vfg error %d", ret);
+					nx_vpu_dec_close_instance(ctx);
+				}else{
+					ctx->is_initialized = 1;
+					ctx->vpu_cmd = SET_FRAME_BUF;
+				}
 			}
-			ctx->vpu_cmd = SET_FRAME_BUF;
+		}else{
+			dev_err(err, "GET_DEC_INSTANCE: already initialized\n");
 		}
 		break;
 
 	case SET_FRAME_BUF:
-		if (ctx->is_initialized == 0) {
-			ret = vpu_dec_init(ctx);
-			if (ret != 0)
-				dev_err(err, "dec_init() is failed, ret=%d\n",
-					ret);
-			else
-				ctx->is_initialized = 1;
-		}
+		ret = vpu_dec_init(ctx);
+		if (ret != 0)
+			dev_err(err, "vpu_dec_init failed, ret=%d\n", ret);
 		ctx->vpu_cmd = DEC_RUN;
 		break;
 
 	case DEC_RUN:
-		if (ctx->is_initialized) {
-			ret = vpu_dec_decode_slice(ctx);
-			if (ret != 0) {
-				dev_err(err, "decode_slice() is failed, ");
-				dev_err(err, "ret = %d\n", ret);
-			}
-		}
+		ret = vpu_dec_decode_slice(ctx);
+		if (ret != 0)
+			dev_err(err, "vpu_dec_decode_slice failed, err=%d", ret);
 		break;
 
 	case DEC_BUF_FLUSH:
@@ -172,31 +169,20 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 			ret = NX_VpuDecFlush(ctx->hInst);
 			if (ret != 0)
 				dev_err(err, "dec_flush() is failed\n");
+			ctx->vpu_cmd = DEC_RUN;
+		}else{
+			dev_err(err, "DEC_BUF_FLUSH: not initialized\n");
 		}
-		ctx->vpu_cmd = DEC_RUN;
 		break;
 
 	case SEQ_END:
-		if (ctx->hInst) {
+		if (ctx->is_initialized) {
 			dev->curr_ctx = ctx->idx;
-
-			if (ctx->is_encoder)
-				ret = NX_VpuEncClose(ctx->hInst,
-					(void *)&dev->vpu_event_present);
+			if( ctx->is_encoder )
+				nx_vpu_enc_close_instance(ctx);
 			else
-				ret = NX_VpuDecClose(ctx->hInst,
-					(void *)&dev->vpu_event_present);
-
-			if (ret != 0)
-				dev_err(err, "Failed to return an instance.\n");
-
-			if (ctx->is_encoder)
-				free_encoder_memory(ctx);
-			else
-				free_decoder_memory(ctx);
-			dev->cur_num_instance--;
+				nx_vpu_dec_close_instance(ctx);
 			ctx->is_initialized = 0;
-			ctx->hInst = NULL;
 		}
 		break;
 
@@ -467,7 +453,8 @@ int nx_vidioc_enum_framesizes(struct file *file, void *priv,
 }
 
 #define	DST_QUEUE_OFF_BASE	(1 << 30)
-int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf)
+int nx_vpu_vidioc_querybuf(struct file *file, void *priv,
+		struct v4l2_buffer *buf)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
 	int i, ret = 0;
@@ -510,7 +497,7 @@ int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 }
 
 /* Stream on */
-int vidioc_streamon(struct file *file, void *priv,
+int nx_vpu_vidioc_streamon(struct file *file, void *priv,
 			   enum v4l2_buf_type type)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
@@ -527,7 +514,7 @@ int vidioc_streamon(struct file *file, void *priv,
 }
 
 /* Stream off, which equals to a pause */
-int vidioc_streamoff(struct file *file, void *priv,
+int nx_vpu_vidioc_streamoff(struct file *file, void *priv,
 			    enum v4l2_buf_type type)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
@@ -571,8 +558,8 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 
 		psize[0] = ctx->strm_buf_size;
 	} else if( vq->type == ctx->vq_img.type ) {
-		int cnt = (ctx->is_encoder) ? (1) :
-			(ctx->codec.dec.frame_buffer_cnt);
+		int minCnt = ctx->is_encoder ? 1 :
+			ctx->codec.dec.minFrameBufCnt + additional_buffer_count;
 
 		if( ctx->is_encoder )
 			*plane_count = 1;
@@ -580,8 +567,8 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 			*plane_count = ctx->useSingleBuf||ctx->img_fmt->singleBuffer ? 1 :
 				ctx->img_fmt->chromaInterleave ? 2 : 3;
 
-		if (*buf_count < cnt)
-			*buf_count = cnt;
+		if (*buf_count < minCnt)
+			*buf_count = minCnt;
 		if (*buf_count > VPU_MAX_BUFFERS)
 			*buf_count = VPU_MAX_BUFFERS;
 
@@ -684,7 +671,8 @@ int nx_vpu_buf_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
-void nx_vpu_cleanup_queue(struct list_head *lh, struct vb2_queue *vq)
+void nx_vpu_cleanup_queue(struct list_head *lh, struct vb2_queue *vq,
+		enum vb2_buffer_state state)
 {
 	struct nx_vpu_buf *b;
 	int i;
@@ -695,7 +683,7 @@ void nx_vpu_cleanup_queue(struct list_head *lh, struct vb2_queue *vq)
 		b = list_entry(lh->next, struct nx_vpu_buf, list);
 		for (i = 0; i < b->vb.num_planes; i++)
 			vb2_set_plane_payload(&b->vb, i, 0);
-		vb2_buffer_done(&b->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&b->vb, state);
 		list_del(&b->list);
 	}
 }

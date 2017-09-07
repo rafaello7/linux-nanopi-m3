@@ -113,6 +113,7 @@ struct vpu_dec_ctx {
 	unsigned int start_Addr;
 	unsigned int end_Addr;
 
+	int minFrameBufCnt;
 	int frame_buffer_cnt;
 	struct nx_vid_memory_info frame_buf[VPU_MAX_BUFFERS-2];
 
@@ -242,9 +243,12 @@ int nx_vidioc_enum_fmt_vid_stream_mplane(struct file *file, void *priv,
 	struct v4l2_fmtdesc *f);
 int nx_vidioc_enum_framesizes(struct file *file, void *priv,
 				      struct v4l2_frmsizeenum *fsize);
-int vidioc_querybuf(struct file *file, void *priv, struct v4l2_buffer *buf);
-int vidioc_streamon(struct file *file, void *priv, enum v4l2_buf_type type);
-int vidioc_streamoff(struct file *file, void *priv, enum v4l2_buf_type type);
+int nx_vpu_vidioc_querybuf(struct file *file, void *priv,
+		struct v4l2_buffer *buf);
+int nx_vpu_vidioc_streamon(struct file *file, void *priv,
+		enum v4l2_buf_type type);
+int nx_vpu_vidioc_streamoff(struct file *file, void *priv,
+		enum v4l2_buf_type type);
 int nx_vpu_queue_setup(struct vb2_queue *vq,
 	unsigned int *buf_count, unsigned int *plane_count,
 	unsigned int psize[], struct device *alloc_devs[]);
@@ -252,7 +256,8 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 void nx_vpu_unlock(struct vb2_queue *q);
 void nx_vpu_lock(struct vb2_queue *q);
 int nx_vpu_buf_prepare(struct vb2_buffer *vb);
-void nx_vpu_cleanup_queue(struct list_head *lh, struct vb2_queue *vq);
+void nx_vpu_cleanup_queue(struct list_head *lh, struct vb2_queue *vq,
+		enum vb2_buffer_state state);
 
 /* For Encoder V4L2 */
 const struct v4l2_ioctl_ops *get_enc_ioctl_ops(void);
@@ -262,9 +267,7 @@ int vpu_enc_open_instance(struct nx_vpu_ctx *ctx);
 int vpu_enc_init(struct nx_vpu_ctx *ctx);
 void vpu_enc_get_seq_info(struct nx_vpu_ctx *ctx);
 int vpu_enc_encode_frame(struct nx_vpu_ctx *ctx);
-
-int alloc_encoder_memory(struct nx_vpu_ctx *ctx);
-int free_encoder_memory(struct nx_vpu_ctx *ctx);
+void nx_vpu_enc_close_instance(struct nx_vpu_ctx*);
 
 /* For Decoder V4L2 */
 const struct v4l2_ioctl_ops *get_dec_ioctl_ops(bool singlePlaneMode);
@@ -274,9 +277,6 @@ int vpu_dec_open_instance(struct nx_vpu_ctx *ctx);
 int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode);
 int vpu_dec_init(struct nx_vpu_ctx *ctx);
 int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx);
-
-int alloc_decoder_memory(struct nx_vpu_ctx *ctx);
-int free_decoder_memory(struct nx_vpu_ctx *ctx);
-
+void nx_vpu_dec_close_instance(struct nx_vpu_ctx*);
 
 #endif          /* #define _nx_vpu_v4l2_H */

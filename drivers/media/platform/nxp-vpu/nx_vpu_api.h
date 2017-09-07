@@ -511,11 +511,12 @@ int NX_VpuDecSetSeqInfo(struct nx_vpu_codec_inst *pInst,
 	struct vpu_dec_seq_init_arg *pSeqArg);
 int NX_VpuDecRegFrameBuf(struct nx_vpu_codec_inst *pInst,
 	struct vpu_dec_reg_frame_arg *pFrmArg);
+int NX_VpuFillStreamBuffer(struct nx_vpu_codec_inst*,
+		void *strmData, unsigned strmDataSize);
 int NX_VpuDecRunFrame(struct nx_vpu_codec_inst *pInst,
 	struct vpu_dec_frame_arg *pRunArg);
 int NX_VpuDecFlush(struct nx_vpu_codec_inst *pInst);
-int NX_VpuDecClrDspFlag(struct nx_vpu_codec_inst *pInst,
-	struct vpu_dec_clr_dsp_flag_arg *pArg);
+int NX_VpuDecClrDspFlag(struct nx_vpu_codec_inst *pInst, unsigned index);
 
 /* Jpeg Encoder Specific APIs */
 int JPU_EncRunFrame(struct nx_vpu_codec_inst *pInst,

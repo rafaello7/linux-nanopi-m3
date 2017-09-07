@@ -264,23 +264,44 @@ int NX_VpuDecRegFrameBuf(struct nx_vpu_codec_inst *pInst,
 		return JPU_DecRegFrameBuf(pInst, pFrmArg);
 }
 
+int NX_VpuFillStreamBuffer(struct nx_vpu_codec_inst *pInst,
+		void *strmData, unsigned strmDataSize)
+{
+	struct vpu_dec_info *pInfo = &pInst->codecInfo.decInfo;
+	enum nx_vpu_ret ret;
+
+	if (pInst->codecMode != MJPG_DEC) {
+		/* Fill Data */
+		if (0 > FillBuffer(pInst, strmData, strmDataSize)) {
+			NX_ErrMsg(("FillBuffer Failed.\n"));
+			return VPU_RET_ERROR;
+		}
+
+	} else {
+		if (pInfo->headerSize == 0) {
+			ret = JPU_DecParseHeader(pInfo, strmData, strmDataSize);
+			if (ret < 0) {
+				NX_ErrMsg(("JpgHeader is failed(Error = %d)!\n", ret));
+				return -1;
+			}
+		}
+		/* Fill Data */
+		if (0 > FillBuffer(pInst, strmData, strmDataSize)) {
+			NX_ErrMsg(("FillBuffer Failed.\n"));
+			return VPU_RET_ERROR;
+		}
+	}
+	return VPU_RET_OK;
+}
+
 int NX_VpuDecRunFrame(struct nx_vpu_codec_inst *pInst,
 	struct vpu_dec_frame_arg *pRunArg)
 {
 	struct vpu_dec_info *pInfo = &pInst->codecInfo.decInfo;
 	enum nx_vpu_ret ret;
 
-	UNUSED(pInfo);
 
 	if (pInst->codecMode != MJPG_DEC) {
-		/* Fill Data */
-		if (0 > FillBuffer(pInst,
-			(unsigned char *)(unsigned long)pRunArg->strmData,
-			pRunArg->strmDataSize)) {
-			NX_ErrMsg(("FillBuffer Failed.\n"));
-			return VPU_RET_ERROR;
-		}
-
 #if 0
 		if (pInfo->bitStreamMode != BS_MODE_PIC_END) {
 			int streamSize;
@@ -303,25 +324,6 @@ int NX_VpuDecRunFrame(struct nx_vpu_codec_inst *pInst,
 		if (ret == VPU_RET_OK)
 			ret = VPU_DecGetOutputInfo(pInst, pRunArg);
 	} else {
-		if (pInfo->headerSize == 0) {
-			ret = JPU_DecParseHeader(pInfo,
-				(uint8_t *)(unsigned long)pRunArg->strmData,
-				pRunArg->strmDataSize);
-			if (ret < 0) {
-				NX_ErrMsg(("JpgHeader is failed(Error = %d)!\n",
-					ret));
-				return -1;
-			}
-		}
-
-		/* Fill Data */
-		if (0 > FillBuffer(pInst,
-			(unsigned char *)(unsigned long)pRunArg->strmData,
-			pRunArg->strmDataSize)) {
-			NX_ErrMsg(("FillBuffer Failed.\n"));
-			return VPU_RET_ERROR;
-		}
-
 		if (pInfo->validFlg > 0) {
 			ret = JPU_DecRunFrame(pInst, pRunArg);
 			pInfo->validFlg -= 1;
@@ -370,14 +372,14 @@ int NX_VpuDecFlush(struct nx_vpu_codec_inst *pInst)
 }
 
 int NX_VpuDecClrDspFlag(struct nx_vpu_codec_inst *pInst,
-	struct vpu_dec_clr_dsp_flag_arg *pArg)
+		unsigned indexFrameDisplay)
 {
 	struct vpu_dec_info *pInfo = &pInst->codecInfo.decInfo;
 
 	if (pInst->codecMode != MJPG_DEC)
-		pInfo->clearDisplayIndexes |= (1<<pArg->indexFrameDisplay);
+		pInfo->clearDisplayIndexes |= 1 << indexFrameDisplay;
 	else
-		pInfo->frmBufferValid[pArg->indexFrameDisplay] = 0;
+		pInfo->frmBufferValid[indexFrameDisplay] = 0;
 
 	return VPU_RET_OK;
 }
