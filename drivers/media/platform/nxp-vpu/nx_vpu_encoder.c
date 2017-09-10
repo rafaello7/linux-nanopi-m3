@@ -92,8 +92,6 @@ int NX_VpuEncOpen(struct vpu_open_arg *pOpenArg, void *devHandle,
 	hInst->devHandle = devHandle;
 
 	hInst->instBufPhyAddr = (uint64_t)pOpenArg->instanceBuf.phyAddr;
-	hInst->instBufVirAddr = (unsigned long)pOpenArg->instanceBuf.virAddr;
-	hInst->instBufSize    = pOpenArg->instanceBuf.size;
 
 	pEncInfo = &hInst->codecInfo.encInfo;
 	pEncInfo->codecStd = pOpenArg->codecStd;
@@ -633,8 +631,7 @@ static int VPU_EncSetFrameBufCommand(struct nx_vpu_codec_inst *pInst,
 	}
 
 	swap_endian((unsigned char *)frameAddr, sizeof(frameAddr));
-	NX_DrvMemcpy((void *)(unsigned long)pInst->paramVirAddr, frameAddr,
-			sizeof(frameAddr));
+	NX_DrvMemcpy(pInst->paramVirAddr, frameAddr, sizeof(frameAddr));
 
 	/* Tell the codec how much frame buffers were allocated. */
 	VpuWriteReg(CMD_SET_FRAME_BUF_NUM, pEncInfo->minFrameBuffers);

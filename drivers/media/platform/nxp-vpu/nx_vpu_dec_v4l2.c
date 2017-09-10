@@ -49,7 +49,6 @@ module_param(holes_for_nxvideodec, bool, 0644);
 MODULE_PARM_DESC(holes_for_nxvideodec,
 		"run in mode for nxvideodec gstreamer plugin");
 
-static int alloc_decoder_memory(struct nx_vpu_ctx*);
 static int free_decoder_memory(struct nx_vpu_ctx*);
 
 static int nx_vpu_dec_ctx_ready(struct nx_vpu_ctx *ctx)
@@ -62,7 +61,7 @@ static int nx_vpu_dec_ctx_ready(struct nx_vpu_ctx *ctx)
 	case SET_FRAME_BUF:
 		/* we need all buffers to configure VPU rotator */
 		return ctx->vq_img.start_streaming_called &&
-			dec_ctx->dpb_queue_cnt == dec_ctx->frame_buffer_cnt;
+			dec_ctx->dpb_queue_cnt >= dec_ctx->declaredFrameBufferCnt;
 	case DEC_RUN:
 		dec_ctx->delay_frm = 1;
 		/* VPU refuses to decode slice when lacks at least two buffers from
@@ -501,8 +500,6 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 		ret = vb2_reqbufs(&ctx->vq_strm, reqbufs);
 	} else if (reqbufs->type == ctx->vq_img.type ) {
 		ret = vb2_reqbufs(&ctx->vq_img, reqbufs);
-		if( ret == 0 )
-			ctx->codec.dec.frame_buffer_cnt = reqbufs->count;
 	} else {
 		ret = -EINVAL;
 	}
@@ -522,9 +519,6 @@ static int handle_end_of_stream(struct nx_vpu_ctx *ctx)
 static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 {
 	struct nx_vpu_ctx *ctx = fh_to_ctx(file->private_data);
-	int ret;
-
-	FUNC_IN();
 
 	if (buf->type == ctx->vq_strm.type) {
 		unsigned bytesused = buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT ?
@@ -536,15 +530,6 @@ static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 			return vb2_qbuf(&ctx->vq_strm, buf);
 		}
 	} else {
-		if (ctx->is_initialized) {
-			ret = NX_VpuDecClrDspFlag(ctx->hInst, buf->index);
-			if (ret != VPU_RET_OK) {
-				NX_ErrMsg(("ClrDspFlag() failed.(Error=%d)\n",
-					ret));
-				return ret;
-			}
-		}
-
 		return vb2_qbuf(&ctx->vq_img, buf);
 	}
 }
@@ -840,31 +825,56 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 		ctx->strm_queue_cnt++;
 	} else if (vq->type == ctx->vq_img.type ) {
 		struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
-		unsigned int idx = buf->vb.index;
+		unsigned idx;
 		int num_planes = ctx->useSingleBuf || ctx->img_fmt->singleBuffer ? 1 :
 			ctx->img_fmt->chromaInterleave ? 2 : 3;
+		uint32_t phyAddr = nx_vpu_mem_plane_addr(ctx, vb, 0);
 
-		buf->planes.raw.y = nx_vpu_mem_plane_addr(ctx, vb, 0);
-		dec_ctx->frame_buf[idx].phyAddr[0] = buf->planes.raw.y;
-
-		if( num_planes > 1 ) {
-			buf->planes.raw.cb = nx_vpu_mem_plane_addr(ctx, vb, 1);
-			dec_ctx->frame_buf[idx].phyAddr[1] = buf->planes.raw.cb;
-		} else if (ctx->chroma_size > 0) {
-			dec_ctx->frame_buf[idx].phyAddr[1] = ctx->luma_size +
-				dec_ctx->frame_buf[idx].phyAddr[0];
+		/* Match buffer by their memory physical address.
+		 * For given buffer index their memory address may change,
+		 * especially for imported DMA buffers */
+		for(idx = 0; idx < dec_ctx->frame_buffer_cnt; ++idx) {
+			if( dec_ctx->decPhyAddr[idx][0] == phyAddr )
+				break;
 		}
+		if( idx == dec_ctx->frame_buffer_cnt ) {
+			if( dec_ctx->frame_buffer_cnt == VPU_MAX_BUFFERS ) {
+				/* limit reached: old buffers removal not implemented for now
+				 */
+				WARN_ONCE(1, "nxp-vpu: buffer limit reached");
+				vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+				return;
+			}
+			dec_ctx->decPhyAddr[idx][0] = nx_vpu_mem_plane_addr(ctx, vb, 0);
+			if( num_planes > 1 ) {
+				dec_ctx->decPhyAddr[idx][1] = nx_vpu_mem_plane_addr(ctx, vb, 1);
+			} else if (ctx->chroma_size > 0) {
+				dec_ctx->decPhyAddr[idx][1] = ctx->luma_size +
+					dec_ctx->decPhyAddr[idx][0];
+			}
 
-		if( num_planes > 2 ) {
-			buf->planes.raw.cr = nx_vpu_mem_plane_addr(ctx, vb, 2);
-			dec_ctx->frame_buf[idx].phyAddr[2] = buf->planes.raw.cr;
-		} else if (ctx->chroma_size > 0 && ctx->chromaInterleave == 0) {
-			dec_ctx->frame_buf[idx].phyAddr[2] = ctx->chroma_size +
-				dec_ctx->frame_buf[idx].phyAddr[1];
+			if( num_planes > 2 ) {
+				dec_ctx->decPhyAddr[idx][2] = nx_vpu_mem_plane_addr(ctx, vb, 2);
+			} else if (ctx->chroma_size > 0 && ctx->chromaInterleave == 0) {
+				dec_ctx->decPhyAddr[idx][2] = ctx->chroma_size +
+					dec_ctx->decPhyAddr[idx][1];
+			}
+			++dec_ctx->frame_buffer_cnt;
 		}
-
-		ctx->codec.dec.dpb_bufs[idx] = buf;
+		if( dec_ctx->dpb_bufs[idx] ) {
+			NX_ErrMsg(("buffer %d has the same payload address as buffer %d\n",
+						buf->vb.index, dec_ctx->dpb_bufs[idx]->vb.index));
+			vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+			return;
+		}
+		dec_ctx->dpb_bufs[idx] = buf;
 		dec_ctx->dpb_queue_cnt++;
+		if( ctx->is_initialized ) {
+			int ret = NX_VpuDecClrDspFlag(ctx->hInst, idx);
+			if (ret != VPU_RET_OK) {
+				NX_ErrMsg(("ClrDspFlag error %d\n", ret));
+			}
+		}
 	} else {
 		NX_ErrMsg(("unsupported buffer type(%d)\n", vq->type));
 		return;
@@ -959,6 +969,7 @@ static void decoder_flush_disp_info(struct vpu_dec_ctx *dec_ctx)
 int vpu_dec_open_instance(struct nx_vpu_ctx *ctx)
 {
 	struct nx_vpu_v4l2 *dev = ctx->dev;
+	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
 	struct nx_vpu_codec_inst *hInst = 0;
 	struct vpu_open_arg openArg;
 	int workBufSize = WORK_BUF_SIZE;
@@ -1042,6 +1053,27 @@ int vpu_dec_open_instance(struct nx_vpu_ctx *ctx)
 		goto err_exit;
 	}
 
+	if (ctx->codec_mode == CODEC_STD_AVC) {
+		dec_ctx->slice_buf = nx_alloc_memory(&dev->plat_dev->dev,
+				2048 * 2048 * 3 / 4, 4096);
+		if (0 == dec_ctx->slice_buf) {
+			NX_ErrMsg(("slice buf allocation failed(size = %d)\n",
+				2048 * 2048 * 3 / 4));
+			goto err_exit;
+		}
+	}
+
+	if (ctx->codec_mode == CODEC_STD_THO || ctx->codec_mode == CODEC_STD_VP3
+		|| ctx->codec_mode == CODEC_STD_VP8) {
+			dec_ctx->pv_slice_buf = nx_alloc_memory(&dev->plat_dev->dev,
+					17 * 4 * (2048 * 2048 / 256), 4096);
+		if (0 == dec_ctx->pv_slice_buf) {
+			NX_ErrMsg(("slice allocation failed(size=%d)\n",
+				17 * 4 * (2048 * 2048 / 256)));
+			goto err_exit;
+		}
+	}
+
 	openArg.instIndex = ctx->idx;
 	openArg.instanceBuf = *ctx->instance_buf;
 	openArg.streamBuf = *ctx->bit_stream_buf;
@@ -1062,6 +1094,14 @@ int vpu_dec_open_instance(struct nx_vpu_ctx *ctx)
 	return ret;
 
 err_exit:
+	if (dec_ctx->pv_slice_buf) {
+		nx_free_memory(dec_ctx->pv_slice_buf);
+		dec_ctx->pv_slice_buf = NULL;
+	}
+	if (dec_ctx->slice_buf) {
+		nx_free_memory(dec_ctx->slice_buf);
+		dec_ctx->slice_buf = NULL;
+	}
 	if (ctx->instance_buf) {
 		nx_free_memory(ctx->instance_buf);
 		ctx->instance_buf = NULL;
@@ -1218,11 +1258,33 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode)
 	return ret;
 }
 
+static struct nx_memory_info *alloc_mvbuf(struct nx_vpu_ctx *ctx)
+{
+	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
+	int mvSize;
+	void *drv = &ctx->dev->plat_dev->dev;
+
+	mvSize = ALIGN(ctx->width, 32) * ALIGN(ctx->height, 32);
+	mvSize = (mvSize * 3) / 2;
+	mvSize = (mvSize + 4) / 5;
+	mvSize = ((mvSize + 7) / 8) * 8;
+	mvSize = ALIGN(mvSize, 4096);
+
+	if ( mvSize == 0 || dec_ctx->frame_buffer_cnt == 0 ) {
+		NX_ErrMsg(("Invalid memory parameters!!!\n"));
+		NX_ErrMsg(("width=%d, height=%d, mvSize=%d buffer_cnt=%d\n",
+				ctx->width, ctx->height, mvSize, dec_ctx->frame_buffer_cnt));
+		return NULL;
+	}
+	return nx_alloc_memory(drv, mvSize * dec_ctx->frame_buffer_cnt, 4096);
+}
+
 int vpu_dec_init(struct nx_vpu_ctx *ctx)
 {
 	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
 	struct vpu_dec_reg_frame_arg *frameArg;
 	int i, ret = 0;
+	struct nx_memory_info *mvbuf = NULL; // new move buf to replace col_mv_buf
 
 	FUNC_IN();
 
@@ -1238,41 +1300,44 @@ int vpu_dec_init(struct nx_vpu_ctx *ctx)
 	frameArg->chromaInterleave = ctx->chromaInterleave;
 
 	if (ctx->codec_mode != CODEC_STD_MJPG) {
-		ret = alloc_decoder_memory(ctx);
-		if (ret) {
+		mvbuf = alloc_mvbuf(ctx);
+		if( mvbuf == NULL ) {
 			NX_ErrMsg(("Failed to allocate decoder buffers.\n"));
 			return -ENOMEM;
 		}
 
 		if (dec_ctx->slice_buf)
-			frameArg->sliceBuffer = *dec_ctx->slice_buf;
-		if (dec_ctx->col_mv_buf)
-			frameArg->colMvBuffer = *dec_ctx->col_mv_buf;
+			frameArg->sliceBuffer = dec_ctx->slice_buf;
+		frameArg->colMvBuffer = mvbuf;
 		if (dec_ctx->pv_slice_buf)
-			frameArg->pvbSliceBuffer = *dec_ctx->pv_slice_buf;
+			frameArg->pvbSliceBuffer = dec_ctx->pv_slice_buf;
 
 		frameArg->sramAddr = ctx->dev->sram_base_addr;
 		frameArg->sramSize = ctx->dev->sram_size;
 	}
 
 	for (i = 0; i < dec_ctx->frame_buffer_cnt; i++) {
-		frameArg->frameBuffer[i].phyAddr[0]
-			= dec_ctx->frame_buf[i].phyAddr[0];
-		frameArg->frameBuffer[i].phyAddr[1]
-			= dec_ctx->frame_buf[i].phyAddr[1];
+		frameArg->frameBuffer[i].phyAddr[0] = dec_ctx->decPhyAddr[i][0];
+		frameArg->frameBuffer[i].phyAddr[1] = dec_ctx->decPhyAddr[i][1];
 
 		if (ctx->chromaInterleave == 0)
-			frameArg->frameBuffer[i].phyAddr[2]
-				= dec_ctx->frame_buf[i].phyAddr[2];
+			frameArg->frameBuffer[i].phyAddr[2] = dec_ctx->decPhyAddr[i][2];
 
 		frameArg->frameBuffer[i].stride[0] = ctx->buf_y_width;
 	}
 	frameArg->numFrameBuffer = dec_ctx->frame_buffer_cnt;
 
 	ret = NX_VpuDecRegFrameBuf(ctx->hInst, frameArg);
-	if (ret != VPU_RET_OK)
-		NX_ErrMsg(("NX_VpuDecRegFrameBuf() failed.(ErrorCode=%d)\n",
-			ret));
+	if (ret == VPU_RET_OK) {
+		if( dec_ctx->col_mv_buf )
+			nx_free_memory(dec_ctx->col_mv_buf);
+		dec_ctx->col_mv_buf = mvbuf;
+		dec_ctx->registeredCount = dec_ctx->frame_buffer_cnt;
+	}else{
+		NX_ErrMsg(("NX_VpuDecRegFrameBuf() failed.(ErrorCode=%d)\n", ret));
+		if( mvbuf )
+			nx_free_memory(mvbuf);
+	}
 
 	return ret;
 }
@@ -1362,6 +1427,15 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 	if (ctx->hInst == NULL) {
 		NX_ErrMsg(("Err : vpu is not opend\n"));
 		return -EAGAIN;
+	}
+
+	if( dec_ctx->frame_buffer_cnt > dec_ctx->registeredCount ) {
+		ret = vpu_dec_init(ctx);
+		if( ret ) {
+			NX_ErrMsg(("vpu_dec_decode_slice: additional buffers register "
+						"failed\n"));
+			return ret;
+		}
 	}
 
 	NX_DrvMemset(&decArg, 0, sizeof(decArg));
@@ -1486,63 +1560,6 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 	return ret;
 }
 
-static int alloc_decoder_memory(struct nx_vpu_ctx *ctx)
-{
-	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
-	int mvSize;
-	void *drv = &ctx->dev->plat_dev->dev;
-
-	FUNC_IN();
-
-	mvSize = ALIGN(ctx->width, 32) * ALIGN(ctx->height, 31);
-	mvSize = (mvSize * 3) / 2;
-	mvSize = (mvSize + 4) / 5;
-	mvSize = ((mvSize + 7) / 8) * 8;
-	mvSize = ALIGN(mvSize, 4096);
-
-	if ( mvSize == 0 || dec_ctx->frame_buffer_cnt == 0 ) {
-		NX_ErrMsg(("Invalid memory parameters!!!\n"));
-		NX_ErrMsg(("width=%d, height=%d, mvSize=%d buffer_cnt=%d\n",
-				ctx->width, ctx->height, mvSize, dec_ctx->frame_buffer_cnt));
-		return -EINVAL;
-	}
-
-	dec_ctx->col_mv_buf = nx_alloc_memory(drv, mvSize *
-		dec_ctx->frame_buffer_cnt, 4096);
-	if (0 == dec_ctx->col_mv_buf) {
-		NX_ErrMsg(("col_mv_buf allocation failed.(size=%d,align=%d)\n",
-			mvSize * dec_ctx->frame_buffer_cnt, 4096));
-		goto Error_Exit;
-	}
-
-	if (ctx->codec_mode == CODEC_STD_AVC) {
-		dec_ctx->slice_buf = nx_alloc_memory(drv, 2048 * 2048 * 3 / 4,
-			4096);
-		if (0 == dec_ctx->slice_buf) {
-			NX_ErrMsg(("slice buf allocation failed(size = %d)\n",
-				2048 * 2048 * 3 / 4));
-			goto Error_Exit;
-		}
-	}
-
-	if (ctx->codec_mode == CODEC_STD_THO || ctx->codec_mode == CODEC_STD_VP3
-		|| ctx->codec_mode == CODEC_STD_VP8) {
-			dec_ctx->pv_slice_buf = nx_alloc_memory(drv, 17 * 4 *
-				(2048 * 2048 / 256), 4096);
-		if (0 == dec_ctx->pv_slice_buf) {
-			NX_ErrMsg(("slice allocation failed(size=%d)\n",
-				17 * 4 * (2048 * 2048 / 256)));
-			goto Error_Exit;
-		}
-	}
-
-	return 0;
-
-Error_Exit:
-	free_decoder_memory(ctx);
-	return -1;
-}
-
 static int free_decoder_memory(struct nx_vpu_ctx *ctx)
 {
 	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
@@ -1577,11 +1594,6 @@ static int free_decoder_memory(struct nx_vpu_ctx *ctx)
 	if (ctx->bit_stream_buf) {
 		nx_free_memory(ctx->bit_stream_buf);
 		ctx->bit_stream_buf = NULL;
-	}
-
-	if( dec_ctx->frameArg ) {
-		kfree(dec_ctx->frameArg);
-		dec_ctx->frameArg = NULL;
 	}
 
 	return 0;

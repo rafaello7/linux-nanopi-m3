@@ -418,11 +418,9 @@ struct nx_vpu_codec_inst {
 	int codecMode;
 	int auxMode;
 	uint64_t paramPhyAddr;	        /* Common Area */
-	uint64_t paramVirAddr;
+	char *paramVirAddr;
 	uint32_t paramBufSize;
 	uint64_t instBufPhyAddr;
-	uint64_t instBufVirAddr;
-	uint32_t instBufSize;
 	union{
 		struct vpu_dec_info decInfo;
 		struct vpu_enc_info encInfo;

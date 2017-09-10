@@ -280,13 +280,13 @@ struct vpu_dec_reg_frame_arg {
 	struct nx_vid_memory_info frameBuffer[30];
 
 	/* MV Buffer Address */
-	struct nx_memory_info colMvBuffer;
+	const struct nx_memory_info *colMvBuffer;
 
 	/* AVC Slice Buffer */
-	struct nx_memory_info sliceBuffer;
+	const struct nx_memory_info *sliceBuffer;
 
 	/* VPX Codec Specific */
-	struct nx_memory_info pvbSliceBuffer;
+	const struct nx_memory_info *pvbSliceBuffer;
 
 	int32_t chromaInterleave;
 

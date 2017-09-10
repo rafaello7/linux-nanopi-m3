@@ -114,8 +114,10 @@ struct vpu_dec_ctx {
 	unsigned int end_Addr;
 
 	int minFrameBufCnt;
+	int declaredFrameBufferCnt;
 	int frame_buffer_cnt;
-	struct nx_vid_memory_info frame_buf[VPU_MAX_BUFFERS-2];
+	int registeredCount;
+	uint32_t decPhyAddr[VPU_MAX_BUFFERS][NX_MAX_PLANES];
 
 	struct nx_memory_info *col_mv_buf;
 	struct nx_memory_info *slice_buf;
@@ -128,8 +130,6 @@ struct vpu_dec_ctx {
 
 	/* for Jpeg */
 	int32_t thumbnailMode;
-
-	struct vpu_dec_reg_frame_arg *frameArg;
 };
 
 /* YUV image format description - output for decoder, input for encoder.
@@ -213,14 +213,6 @@ struct nx_vpu_ctx {
 struct nx_vpu_buf {
 	struct vb2_buffer vb;
 	struct list_head list;
-	union {
-		struct {
-			dma_addr_t y;
-			dma_addr_t cb;
-			dma_addr_t cr;
-		} raw;
-		dma_addr_t stream;
-	} planes;
 };
 
 

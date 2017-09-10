@@ -1074,9 +1074,8 @@ static void nx_vpu_enc_buf_queue(struct vb2_buffer *vb)
 
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 
-		NX_DbgMsg(INFO_MSG, ("adding to dst: %p (%08lx, %08lx)\n", vb,
-			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 0),
-			(unsigned long)buf->planes.stream));
+		NX_DbgMsg(INFO_MSG, ("adding to dst: %p (%08lx)\n", vb,
+			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 0)));
 
 		list_add_tail(&buf->list, &ctx->strm_queue);
 		ctx->strm_queue_cnt++;

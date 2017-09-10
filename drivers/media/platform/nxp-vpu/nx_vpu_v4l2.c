@@ -545,46 +545,77 @@ int nx_vpu_queue_setup(struct vb2_queue *vq,
 	FUNC_IN();
 
 	if (vq->type == ctx->vq_strm.type ) {
-		if (ctx->is_encoder)
-			*plane_count = ctx->useSingleBuf||ctx->img_fmt->singleBuffer ? 1 :
-				ctx->img_fmt->chromaInterleave ? 2 : 3;
-		else
-			*plane_count = 1;
+		int planeCount = !ctx->is_encoder || ctx->useSingleBuf ||
+			ctx->img_fmt->singleBuffer ? 1 :
+			ctx->img_fmt->chromaInterleave ? 2 : 3;
 
-		if (*buf_count < 1)
-			*buf_count = 1;
-		if (*buf_count > VPU_MAX_BUFFERS)
-			*buf_count = VPU_MAX_BUFFERS;
-
-		psize[0] = ctx->strm_buf_size;
-	} else if( vq->type == ctx->vq_img.type ) {
-		int minCnt = ctx->is_encoder ? 1 :
-			ctx->codec.dec.minFrameBufCnt + additional_buffer_count;
-
-		if( ctx->is_encoder )
-			*plane_count = 1;
-		else
-			*plane_count = ctx->useSingleBuf||ctx->img_fmt->singleBuffer ? 1 :
-				ctx->img_fmt->chromaInterleave ? 2 : 3;
-
-		if (*buf_count < minCnt)
-			*buf_count = minCnt;
-		if (*buf_count > VPU_MAX_BUFFERS)
-			*buf_count = VPU_MAX_BUFFERS;
-
-		switch( *plane_count ) {
-		case 1:
-			psize[0] = ctx->luma_size + 2 * ctx->chroma_size;
-			break;
-		case 2:
-			psize[0] = ctx->luma_size;
-			psize[1] = 2 * ctx->chroma_size;
-			break;
-		default: // 3
-			psize[0] = ctx->luma_size;
-			psize[1] = psize[2] = ctx->chroma_size;
-			break;
+		if( *plane_count == 0 ) {
+			*plane_count = planeCount;
+			if( *buf_count < 1 )
+				*buf_count = 1;
+			if (*buf_count > VPU_MAX_BUFFERS)
+				*buf_count = VPU_MAX_BUFFERS;
+			psize[0] = ctx->strm_buf_size;
+		}else{	// checking additional buffers for VIDIOC_CREATE_BUFS
+			if( *plane_count != planeCount ) {
+				NX_ErrMsg(("strm: plane count mismatch"));
+				return -EINVAL;
+			}
+			if( *buf_count + vq->num_buffers > VPU_MAX_BUFFERS )
+				*buf_count = VPU_MAX_BUFFERS - vq->num_buffers;
+			if( psize[0] < ctx->strm_buf_size )
+				return -EINVAL;
 		}
+	} else if( vq->type == ctx->vq_img.type ) {
+		int planeCount = ctx->is_encoder || ctx->useSingleBuf ||
+			ctx->img_fmt->singleBuffer ? 1 :
+			ctx->img_fmt->chromaInterleave ? 2 : 3;
+
+		if( *plane_count == 0 ) {
+			int minBufCnt = ctx->is_encoder ? 1 :
+				ctx->codec.dec.minFrameBufCnt + additional_buffer_count;
+			*plane_count = planeCount;
+			if (*buf_count < minBufCnt)
+				*buf_count = minBufCnt;
+			if (*buf_count > VPU_MAX_BUFFERS)
+				*buf_count = VPU_MAX_BUFFERS;
+			switch( planeCount ) {
+			case 1:
+				psize[0] = ctx->luma_size + 2 * ctx->chroma_size;
+				break;
+			case 2:
+				psize[0] = ctx->luma_size;
+				psize[1] = 2 * ctx->chroma_size;
+				break;
+			default: // 3
+				psize[0] = ctx->luma_size;
+				psize[1] = psize[2] = ctx->chroma_size;
+				break;
+			}
+		}else{	// checking additional buffers for VIDIOC_CREATE_BUFS
+			if( *plane_count != planeCount ) {
+				NX_ErrMsg(("img: plane count mismatch"));
+				return -EINVAL;
+			}
+			if( *buf_count + vq->num_buffers > VPU_MAX_BUFFERS )
+				*buf_count = VPU_MAX_BUFFERS - vq->num_buffers;
+			switch( planeCount ) {
+			case 1:
+				if( psize[0] < ctx->luma_size + 2 * ctx->chroma_size )
+					return -EINVAL;
+				break;
+			case 2:
+				if(psize[0] < ctx->luma_size || psize[1] < 2 * ctx->chroma_size)
+					return -EINVAL;
+				break;
+			default: // 3
+				if( psize[0] < ctx->luma_size || psize[1] < ctx->chroma_size ||
+					   	psize[2] < ctx->chroma_size )
+					return -EINVAL;
+				break;
+			}
+		}
+		ctx->codec.dec.declaredFrameBufferCnt = vq->num_buffers + *buf_count;
 	} else {
 		NX_ErrMsg(("invalid queue type: %d\n", vq->type));
 		return -EINVAL;

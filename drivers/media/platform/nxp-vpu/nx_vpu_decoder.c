@@ -117,8 +117,6 @@ int NX_VpuDecOpen(struct vpu_open_arg *pOpenArg, void *devHandle,
 	hInst->devHandle = devHandle;
 
 	hInst->instBufPhyAddr = (uint64_t)pOpenArg->instanceBuf.phyAddr;
-	hInst->instBufVirAddr = (unsigned long)pOpenArg->instanceBuf.virAddr;
-	hInst->instBufSize    = pOpenArg->instanceBuf.size;
 	pDecInfo = &hInst->codecInfo.decInfo;
 
 	/* Clrear Instnace Information */
@@ -166,8 +164,7 @@ int NX_VpuDecOpen(struct vpu_open_arg *pOpenArg, void *devHandle,
 	pDecInfo->seqInitEscape = 0;
 	pDecInfo->streamEndian = VPU_STREAM_ENDIAN;
 
-	NX_DrvMemset((void *)(unsigned long)hInst->paramVirAddr, 0,
-			PARA_BUF_SIZE);
+	NX_DrvMemset(hInst->paramVirAddr, 0, PARA_BUF_SIZE);
 
 	VpuWriteReg(pDecInfo->streamWrPtrRegAddr, pDecInfo->strmBufPhyAddr);
 	VpuWriteReg(pDecInfo->streamRdPtrRegAddr, pDecInfo->strmBufPhyAddr);
@@ -787,20 +784,17 @@ WAIT_INTERRUPT:
 	}
 }
 
+static void setBufAddr(char *paramVirAddr, unsigned idx, unsigned value)
+{
+	((uint32_t*)paramVirAddr)[idx ^ 1] = cpu_to_le32(value);
+}
+
 static int VPU_DecRegisterFrameBufCommand(struct nx_vpu_codec_inst
 	*pInst, struct vpu_dec_reg_frame_arg *pArg)
 {
 	struct vpu_dec_info *pInfo = &pInst->codecInfo.decInfo;
-	unsigned char frameAddr[MAX_REG_FRAME][3][4];
-	unsigned char colMvAddr[MAX_REG_FRAME][4];
 	int bufferStride = pArg->frameBuffer[0].stride[0];
-	unsigned int val, mvStartAddr;
-	int i;
-
-	FUNC_IN();
-
-	NX_DrvMemset(frameAddr, 0, sizeof(frameAddr));
-	NX_DrvMemset(colMvAddr, 0, sizeof(colMvAddr));
+	unsigned i, val;
 
 	pInfo->cbcrInterleave = pArg->chromaInterleave;
 	pInfo->cacheConfig =
@@ -810,81 +804,39 @@ static int VPU_DecRegisterFrameBufCommand(struct nx_vpu_codec_inst
 		pInfo->cbcrInterleave);
 
 	for (i = 0; i < pArg->numFrameBuffer; i++) {
-		struct nx_vid_memory_info *frameBuffer = &pArg->frameBuffer[i];
+		uint32_t *phyAddr = pArg->frameBuffer[i].phyAddr;
 
-		frameAddr[i][0][0] = (frameBuffer->phyAddr[0] >> 24) & 0xFF;
-		frameAddr[i][0][1] = (frameBuffer->phyAddr[0] >> 16) & 0xFF;
-		frameAddr[i][0][2] = (frameBuffer->phyAddr[0] >>  8) & 0xFF;
-		frameAddr[i][0][3] = (frameBuffer->phyAddr[0] >>  0) & 0xFF;
-
-		frameAddr[i][1][0] = (frameBuffer->phyAddr[1] >> 24) & 0xFF;
-		frameAddr[i][1][1] = (frameBuffer->phyAddr[1] >> 16) & 0xFF;
-		frameAddr[i][1][2] = (frameBuffer->phyAddr[1] >>  8) & 0xFF;
-		frameAddr[i][1][3] = (frameBuffer->phyAddr[1] >>  0) & 0xFF;
-
-		if (pInfo->cbcrInterleave == 0) {
-			frameAddr[i][2][0] = (frameBuffer->phyAddr[2] >> 24)
-				& 0xFF;
-			frameAddr[i][2][1] = (frameBuffer->phyAddr[2] >> 16)
-				& 0xFF;
-			frameAddr[i][2][2] = (frameBuffer->phyAddr[2] >>  8)
-				& 0xFF;
-			frameAddr[i][2][3] = (frameBuffer->phyAddr[2] >>  0)
-				& 0xFF;
-		}
+		setBufAddr(pInst->paramVirAddr, 3 * i, phyAddr[0]);
+		setBufAddr(pInst->paramVirAddr, 3 * i + 1, phyAddr[1]);
+		if (pInfo->cbcrInterleave == 0)
+			setBufAddr(pInst->paramVirAddr, 3 * i + 2, phyAddr[2]);
 	}
 
-	swap_endian((unsigned char *)(unsigned long)frameAddr,
-			sizeof(frameAddr));
-	NX_DrvMemcpy((void *)(unsigned long)pInst->paramVirAddr, frameAddr,
-			sizeof(frameAddr));
 	NX_DrvMemcpy(pInfo->frameBuffer, pArg->frameBuffer,
 		sizeof(pArg->frameBuffer));
 
-	mvStartAddr = pArg->colMvBuffer.phyAddr;
 
 	/* MV allocation and registe */
 	if (pInst->codecMode == AVC_DEC ||	pInst->codecMode == VC1_DEC ||
 		pInst->codecMode == MP4_DEC || pInst->codecMode == RV_DEC  ||
-		pInst->codecMode == AVS_DEC) {
-		/*unsigned long   bufMvCol; */
-		int size_mvcolbuf;
+		pInst->codecMode == AVS_DEC)
+	{
+		unsigned mvStartAddr = pArg->colMvBuffer->phyAddr;
+		int size_mvcolbuf =  ((pInfo->width+31)&~31) *
+			((pInfo->height+31)&~31);
 
-		mvStartAddr = pArg->colMvBuffer.phyAddr;
+		size_mvcolbuf = (size_mvcolbuf*3) / 2;
+		size_mvcolbuf = (size_mvcolbuf+4) / 5;
+		size_mvcolbuf = ((size_mvcolbuf+7) / 8) * 8;
 
-		if (pInst->codecMode == AVC_DEC ||
-			pInst->codecMode == VC1_DEC ||
-			pInst->codecMode == MP4_DEC ||
-			pInst->codecMode == RV_DEC ||
-			pInst->codecMode == AVS_DEC) {
-			size_mvcolbuf =  ((pInfo->width+31)&~31) *
-				((pInfo->height+31)&~31);
-			size_mvcolbuf = (size_mvcolbuf*3) / 2;
-			size_mvcolbuf = (size_mvcolbuf+4) / 5;
-			size_mvcolbuf = ((size_mvcolbuf+7) / 8) * 8;
-
-			if (pInst->codecMode == AVC_DEC) {
-				for (i = 0; i < pArg->numFrameBuffer; i++) {
-					colMvAddr[i][0] = (mvStartAddr >> 24)
-						& 0xFF;
-					colMvAddr[i][1] = (mvStartAddr >> 16)
-						& 0xFF;
-					colMvAddr[i][2] = (mvStartAddr >>  8)
-						& 0xFF;
-					colMvAddr[i][3] = (mvStartAddr >>  0)
-						& 0xFF;
-					mvStartAddr += size_mvcolbuf;
-				}
-			} else {
-				colMvAddr[0][0] = (mvStartAddr >> 24) & 0xFF;
-				colMvAddr[0][1] = (mvStartAddr >> 16) & 0xFF;
-				colMvAddr[0][2] = (mvStartAddr >>  8) & 0xFF;
-				colMvAddr[0][3] = (mvStartAddr >>  0) & 0xFF;
+		if (pInst->codecMode == AVC_DEC) {
+			for (i = 0; i < pArg->numFrameBuffer; i++) {
+				setBufAddr(pInst->paramVirAddr + 384, i, mvStartAddr);
+				mvStartAddr += size_mvcolbuf;
 			}
+		} else {
+			setBufAddr(pInst->paramVirAddr + 384, 0, mvStartAddr);
 		}
-		swap_endian((unsigned char *)colMvAddr, sizeof(colMvAddr));
-		NX_DrvMemcpy((void *)(unsigned long)(pInst->paramVirAddr+384),
-				colMvAddr, sizeof(colMvAddr));
 	}
 
 	if (!ConfigDecSecAXI(pInfo->codecStd, &pInfo->sec_axi_info,
@@ -914,14 +866,14 @@ static int VPU_DecRegisterFrameBufCommand(struct nx_vpu_codec_inst
 
 	if (pInst->codecMode == VPX_DEC) {
 		VpuWriteReg(CMD_SET_FRAME_MB_BUF_BASE,
-			pArg->pvbSliceBuffer.phyAddr);
+			pArg->pvbSliceBuffer->phyAddr);
 	}
 
 	if (pInst->codecMode == AVC_DEC) {
 		VpuWriteReg(CMD_SET_FRAME_SLICE_BB_START,
-			pArg->sliceBuffer.phyAddr);
+			pArg->sliceBuffer->phyAddr);
 		VpuWriteReg(CMD_SET_FRAME_SLICE_BB_SIZE,
-			pArg->sliceBuffer.size/1024);
+			pArg->sliceBuffer->size/1024);
 	}
 
 	val = 0;
