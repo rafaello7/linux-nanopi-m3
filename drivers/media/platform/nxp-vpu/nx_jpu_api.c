@@ -668,7 +668,7 @@ int JPU_EncRunFrame(struct nx_vpu_codec_inst *pInst,
 	struct enc_jpeg_info *pJpgInfo = &pInfo->enc_codec_para.jpgEncInfo;
 	int yuv_format = pJpgInfo->format;
 	unsigned int mapEnable;
-	int stride = runArg->inImgBuffer.stride[0];
+	int stride = runArg->inImgBuffer.strideY;
 
 	NX_DbgMsg(INFO_MSG, ("Jpeg Encode Info : Rotate = %d, Mirror = %d\n",
 		pJpgInfo->rotationAngle, pJpgInfo->mirrorDirection));
@@ -1531,13 +1531,10 @@ int JPU_DecRegFrameBuf(struct nx_vpu_codec_inst *pInst,
 
 	pInfo->cbcrInterleave = pArg->chromaInterleave;
 	pInfo->numFrameBuffer = pArg->numFrameBuffer;
-
-	for (i = 0 ; i < pInfo->numFrameBuffer ; i++) {
-		NX_DrvMemcpy((void *)&pInfo->frameBuffer[i],
-			(void *)&pArg->frameBuffer[i],
-			sizeof(struct nx_vid_memory_info));
+	pInfo->strideY = pArg->strideY;
+	pInfo->phyAddrs = *pArg->phyAddrs;
+	for (i = 0 ; i < pInfo->numFrameBuffer ; i++)
 		pInfo->frmBufferValid[i] = 0;
-	}
 
 	return 0;
 }
@@ -1649,6 +1646,7 @@ int JPU_DecRunFrame(struct nx_vpu_codec_inst *pInst,
 	struct vpu_dec_info *pInfo = &pInst->codecInfo.decInfo;
 	unsigned int val, reason = 0;
 	int32_t i, idx;
+	const uint32_t *phyAddrs;
 
 	for (i = 0 ; i <= pInfo->numFrameBuffer ; i++) {
 		idx = pInfo->decodeIdx + i;
@@ -1658,7 +1656,7 @@ int JPU_DecRunFrame(struct nx_vpu_codec_inst *pInst,
 
 		if (pInfo->frmBufferValid[idx] == 0) {
 			pInfo->decodeIdx = idx;
-			pArg->hCurrFrameBuffer = &pInfo->frameBuffer[idx];
+			phyAddrs = pInfo->phyAddrs.addr[idx];
 			pArg->indexFrameDecoded = idx;
 			pArg->indexFrameDisplay = idx;
 			break;
@@ -1727,13 +1725,13 @@ int JPU_DecRunFrame(struct nx_vpu_codec_inst *pInst,
 		val = VpuReadReg(GDI_STATUS);
 
 	VpuWriteReg(GDI_INFO_CONTROL, (0 << 20) | (pInfo->imgFormat << 17) |
-		(CBCR_INTERLEAVE << 16) | (pArg->hCurrFrameBuffer->stride[0]));
+		(CBCR_INTERLEAVE << 16) | (pInfo->strideY));
 
 	VpuWriteReg(GDI_INFO_PIC_SIZE, (pInfo->width << 16) | pInfo->height);
 
-	VpuWriteReg(GDI_INFO_BASE_Y, pArg->hCurrFrameBuffer->phyAddr[0]);
-	VpuWriteReg(GDI_INFO_BASE_CB,  pArg->hCurrFrameBuffer->phyAddr[1]);
-	VpuWriteReg(GDI_INFO_BASE_CR,  pArg->hCurrFrameBuffer->phyAddr[2]);
+	VpuWriteReg(GDI_INFO_BASE_Y, phyAddrs[0]);
+	VpuWriteReg(GDI_INFO_BASE_CB,  phyAddrs[1]);
+	VpuWriteReg(GDI_INFO_BASE_CR,  phyAddrs[2]);
 
 	VpuWriteReg(MJPEG_DPB_BASE00_REG, 0);
 
@@ -1774,10 +1772,6 @@ int JPU_DecRunFrame(struct nx_vpu_codec_inst *pInst,
 	pArg->outRect.right = pArg->outWidth;
 	pArg->outRect.bottom = pArg->outHeight;
 	pArg->numOfErrMBs = VpuReadReg(MJPEG_PIC_ERRMB_REG);
-
-	NX_DrvMemcpy((void *)(&pArg->outFrameBuffer),
-		(void *)(pArg->hCurrFrameBuffer),
-		sizeof(struct nx_vid_memory_info));
 
 	pInfo->readPos = VpuReadReg(pInfo->streamRdPtrRegAddr);
 	pArg->strmReadPos = pInfo->readPos - pInfo->strmBufPhyAddr;

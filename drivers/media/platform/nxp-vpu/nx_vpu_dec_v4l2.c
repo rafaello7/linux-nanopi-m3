@@ -597,7 +597,7 @@ static int vidioc_g_ctrl(struct file *file, void *priv, struct v4l2_control
 	if (ctrl->id == V4L2_CID_MPEG_VIDEO_THUMBNAIL_MODE) {
 		ctrl->value = ctx->codec.dec.thumbnailMode;
 	} else {
-		NX_ErrMsg(("Invalid control(ID = %x)\n", ctrl->id));
+		NX_DbgMsg(INFO_MSG, ("unsupported control id=0x%x\n", ctrl->id));
 		return -EINVAL;
 	}
 	return 0;
@@ -828,13 +828,13 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 		unsigned idx;
 		int num_planes = ctx->useSingleBuf || ctx->img_fmt->singleBuffer ? 1 :
 			ctx->img_fmt->chromaInterleave ? 2 : 3;
-		uint32_t phyAddr = nx_vpu_mem_plane_addr(ctx, vb, 0);
+		uint32_t phyAddr0 = nx_vpu_mem_plane_addr(vb, 0);
 
 		/* Match buffer by their memory physical address.
 		 * For given buffer index their memory address may change,
 		 * especially for imported DMA buffers */
 		for(idx = 0; idx < dec_ctx->frame_buffer_cnt; ++idx) {
-			if( dec_ctx->decPhyAddr[idx][0] == phyAddr )
+			if( dec_ctx->phyAddrs.addr[idx][0] == phyAddr0 )
 				break;
 		}
 		if( idx == dec_ctx->frame_buffer_cnt ) {
@@ -845,19 +845,19 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 				vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
 				return;
 			}
-			dec_ctx->decPhyAddr[idx][0] = nx_vpu_mem_plane_addr(ctx, vb, 0);
+			dec_ctx->phyAddrs.addr[idx][0] = phyAddr0;
 			if( num_planes > 1 ) {
-				dec_ctx->decPhyAddr[idx][1] = nx_vpu_mem_plane_addr(ctx, vb, 1);
+				dec_ctx->phyAddrs.addr[idx][1] = nx_vpu_mem_plane_addr(vb, 1);
 			} else if (ctx->chroma_size > 0) {
-				dec_ctx->decPhyAddr[idx][1] = ctx->luma_size +
-					dec_ctx->decPhyAddr[idx][0];
+				dec_ctx->phyAddrs.addr[idx][1] = ctx->luma_size +
+					dec_ctx->phyAddrs.addr[idx][0];
 			}
 
 			if( num_planes > 2 ) {
-				dec_ctx->decPhyAddr[idx][2] = nx_vpu_mem_plane_addr(ctx, vb, 2);
+				dec_ctx->phyAddrs.addr[idx][2] = nx_vpu_mem_plane_addr(vb, 2);
 			} else if (ctx->chroma_size > 0 && ctx->chromaInterleave == 0) {
-				dec_ctx->decPhyAddr[idx][2] = ctx->chroma_size +
-					dec_ctx->decPhyAddr[idx][1];
+				dec_ctx->phyAddrs.addr[idx][2] = ctx->chroma_size +
+					dec_ctx->phyAddrs.addr[idx][1];
 			}
 			++dec_ctx->frame_buffer_cnt;
 		}
@@ -1145,7 +1145,7 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode)
 		}
 
 		buf = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
-		phyAddr = nx_vpu_mem_plane_addr(ctx, &buf->vb, 0);
+		phyAddr = nx_vpu_mem_plane_addr(&buf->vb, 0);
 		seqArg.seqDataSize = buf->vb.planes[0].bytesused;
 
 #ifdef USE_ION_MEMORY
@@ -1282,8 +1282,8 @@ static struct nx_memory_info *alloc_mvbuf(struct nx_vpu_ctx *ctx)
 int vpu_dec_init(struct nx_vpu_ctx *ctx)
 {
 	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
-	struct vpu_dec_reg_frame_arg *frameArg;
-	int i, ret = 0;
+	struct vpu_dec_reg_frame_arg frameArg;
+	int ret = 0;
 	struct nx_memory_info *mvbuf = NULL; // new move buf to replace col_mv_buf
 
 	FUNC_IN();
@@ -1292,12 +1292,7 @@ int vpu_dec_init(struct nx_vpu_ctx *ctx)
 		NX_ErrMsg(("Err : vpu is not opend\n"));
 		return -EAGAIN;
 	}
-	frameArg = kzalloc(sizeof(struct vpu_dec_reg_frame_arg),
-			GFP_KERNEL);
-	if (!frameArg)
-		return -ENOMEM;
-
-	frameArg->chromaInterleave = ctx->chromaInterleave;
+	frameArg.chromaInterleave = ctx->chromaInterleave;
 
 	if (ctx->codec_mode != CODEC_STD_MJPG) {
 		mvbuf = alloc_mvbuf(ctx);
@@ -1307,27 +1302,19 @@ int vpu_dec_init(struct nx_vpu_ctx *ctx)
 		}
 
 		if (dec_ctx->slice_buf)
-			frameArg->sliceBuffer = dec_ctx->slice_buf;
-		frameArg->colMvBuffer = mvbuf;
+			frameArg.sliceBuffer = dec_ctx->slice_buf;
+		frameArg.colMvBuffer = mvbuf;
 		if (dec_ctx->pv_slice_buf)
-			frameArg->pvbSliceBuffer = dec_ctx->pv_slice_buf;
+			frameArg.pvbSliceBuffer = dec_ctx->pv_slice_buf;
 
-		frameArg->sramAddr = ctx->dev->sram_base_addr;
-		frameArg->sramSize = ctx->dev->sram_size;
+		frameArg.sramAddr = ctx->dev->sram_base_addr;
+		frameArg.sramSize = ctx->dev->sram_size;
 	}
+	frameArg.numFrameBuffer = dec_ctx->frame_buffer_cnt;
+	frameArg.strideY =  ctx->buf_y_width;
+	frameArg.phyAddrs = &dec_ctx->phyAddrs;
 
-	for (i = 0; i < dec_ctx->frame_buffer_cnt; i++) {
-		frameArg->frameBuffer[i].phyAddr[0] = dec_ctx->decPhyAddr[i][0];
-		frameArg->frameBuffer[i].phyAddr[1] = dec_ctx->decPhyAddr[i][1];
-
-		if (ctx->chromaInterleave == 0)
-			frameArg->frameBuffer[i].phyAddr[2] = dec_ctx->decPhyAddr[i][2];
-
-		frameArg->frameBuffer[i].stride[0] = ctx->buf_y_width;
-	}
-	frameArg->numFrameBuffer = dec_ctx->frame_buffer_cnt;
-
-	ret = NX_VpuDecRegFrameBuf(ctx->hInst, frameArg);
+	ret = NX_VpuDecRegFrameBuf(ctx->hInst, &frameArg);
 	if (ret == VPU_RET_OK) {
 		if( dec_ctx->col_mv_buf )
 			nx_free_memory(dec_ctx->col_mv_buf);
@@ -1454,7 +1441,7 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 
 		strmBuf = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
 		vbuf = to_vb2_v4l2_buffer(&strmBuf->vb);
-		phyAddr = nx_vpu_mem_plane_addr(ctx, &strmBuf->vb, 0);
+		phyAddr = nx_vpu_mem_plane_addr(&strmBuf->vb, 0);
 		strmDataSize = vb2_get_plane_payload(&strmBuf->vb, 0);
 		alignSz = (strmDataSize + 4095) & (~4095);
 #ifdef USE_ION_MEMORY

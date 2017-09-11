@@ -69,8 +69,7 @@ static void nx_vpu_qos_update(int val)
 }
 #endif
 
-dma_addr_t nx_vpu_mem_plane_addr(struct nx_vpu_ctx *c, struct vb2_buffer *v,
-				 unsigned int n)
+dma_addr_t nx_vpu_mem_plane_addr(struct vb2_buffer *v, unsigned n)
 {
 #ifdef USE_ION_MEMORY
 	void *cookie = vb2_plane_cookie(v, n);
@@ -667,14 +666,14 @@ int nx_vpu_buf_prepare(struct vb2_buffer *vb)
 		return -EINVAL;
 	}
 	for (i = 0; i < num_planes; i++) {
-		if (!nx_vpu_mem_plane_addr(ctx, vb, i)) {
+		if (!nx_vpu_mem_plane_addr(vb, i)) {
 			NX_ErrMsg(("failed to get %d plane cookie\n", i));
 			return -EINVAL;
 		}
 
 		NX_DbgMsg(INFO_MSG, ("index: %d, plane[%d] cookie: 0x%08lx\n",
 			vb->index, i,
-			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, i)));
+			(unsigned long)nx_vpu_mem_plane_addr(vb, i)));
 	}
 	if( ! isStream ) {
 		switch( num_planes ) {

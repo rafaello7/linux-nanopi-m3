@@ -805,7 +805,7 @@ static int VPU_EncOneFrameCommand(struct nx_vpu_codec_inst *pInst,
 
 		VpuWriteReg(CMD_ENC_PIC_SRC_INDEX, 2);
 		VpuWriteReg(CMD_ENC_PIC_SRC_STRIDE,
-			pRunArg->inImgBuffer.stride[0]);
+			pRunArg->inImgBuffer.strideY);
 		VpuWriteReg(CMD_ENC_PIC_SRC_ADDR_Y,
 			pRunArg->inImgBuffer.phyAddr[0]);
 		VpuWriteReg(CMD_ENC_PIC_SRC_ADDR_CB,

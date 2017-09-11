@@ -793,18 +793,17 @@ static int VPU_DecRegisterFrameBufCommand(struct nx_vpu_codec_inst
 	*pInst, struct vpu_dec_reg_frame_arg *pArg)
 {
 	struct vpu_dec_info *pInfo = &pInst->codecInfo.decInfo;
-	int bufferStride = pArg->frameBuffer[0].stride[0];
 	unsigned i, val;
 
 	pInfo->cbcrInterleave = pArg->chromaInterleave;
 	pInfo->cacheConfig =
 		MaverickCache2Config(1, pInfo->cbcrInterleave, 0, 0, 3, 0, 15);
 
-	SetTiledMapType(VPU_LINEAR_FRAME_MAP, bufferStride,
+	SetTiledMapType(VPU_LINEAR_FRAME_MAP, pArg->strideY,
 		pInfo->cbcrInterleave);
 
 	for (i = 0; i < pArg->numFrameBuffer; i++) {
-		uint32_t *phyAddr = pArg->frameBuffer[i].phyAddr;
+		const uint32_t *phyAddr = pArg->phyAddrs->addr[i];
 
 		setBufAddr(pInst->paramVirAddr, 3 * i, phyAddr[0]);
 		setBufAddr(pInst->paramVirAddr, 3 * i + 1, phyAddr[1]);
@@ -812,9 +811,8 @@ static int VPU_DecRegisterFrameBufCommand(struct nx_vpu_codec_inst
 			setBufAddr(pInst->paramVirAddr, 3 * i + 2, phyAddr[2]);
 	}
 
-	NX_DrvMemcpy(pInfo->frameBuffer, pArg->frameBuffer,
-		sizeof(pArg->frameBuffer));
-
+	pInfo->strideY = pArg->strideY;
+	pInfo->phyAddrs = *pArg->phyAddrs;
 
 	/* MV allocation and registe */
 	if (pInst->codecMode == AVC_DEC ||	pInst->codecMode == VC1_DEC ||
@@ -849,7 +847,7 @@ static int VPU_DecRegisterFrameBufCommand(struct nx_vpu_codec_inst
 
 	/* Tell the decoder how much frame buffers were allocated. */
 	VpuWriteReg(CMD_SET_FRAME_BUF_NUM, pArg->numFrameBuffer);
-	VpuWriteReg(CMD_SET_FRAME_BUF_STRIDE, bufferStride);
+	VpuWriteReg(CMD_SET_FRAME_BUF_STRIDE, pArg->strideY);
 	VpuWriteReg(CMD_SET_FRAME_AXI_BIT_ADDR, pInfo->sec_axi_info.bufBitUse);
 	VpuWriteReg(CMD_SET_FRAME_AXI_IPACDC_ADDR,
 		pInfo->sec_axi_info.bufIpAcDcUse);
@@ -1050,12 +1048,6 @@ static int VPU_DecGetOutputInfo(struct nx_vpu_codec_inst *pInst,
 	val = VpuReadReg(RET_DEC_PIC_SUCCESS);
 	pArg->isSuccess	= val;
 	pArg->sequenceChanged = ((val>>20) & 0x1);
-
-	if (pArg->indexFrameDisplay >= 0 &&
-		pArg->indexFrameDisplay < pInfo->numFrameBuffer) {
-		pArg->outFrameBuffer =
-			pInfo->frameBuffer[pArg->indexFrameDisplay];
-	}
 
 	if (pInst->codecMode == VC1_DEC && pArg->indexFrameDisplay != -3) {
 		if (pInfo->vc1BframeDisplayValid == 0) {

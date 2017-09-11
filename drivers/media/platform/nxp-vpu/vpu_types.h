@@ -23,6 +23,8 @@
 
 #include "nx_port_func.h"
 
+#define VPU_MAX_BUFFERS                 32
+
 struct vpu_rect {
 	int32_t left;
 	int32_t top;
@@ -274,10 +276,15 @@ struct vpu_dec_seq_init_arg {
 	uint32_t imgFormat;
 };
 
+struct vpu_dec_phy_addr_info {
+	uint32_t addr[VPU_MAX_BUFFERS][NX_MAX_PLANES];
+};
+
 struct vpu_dec_reg_frame_arg {
 	/* Frame Buffers */
 	int32_t numFrameBuffer;
-	struct nx_vid_memory_info frameBuffer[30];
+	uint32_t strideY;
+	const struct vpu_dec_phy_addr_info *phyAddrs;
 
 	/* MV Buffer Address */
 	const struct nx_memory_info *colMvBuffer;
@@ -376,8 +383,6 @@ struct vpu_dec_frame_arg {
 	/*  VC1 Info */
 	int32_t multiRes;
 
-	struct nx_vid_memory_info outFrameBuffer;
-
 	/* MPEG2 User Data */
 	int32_t userDataNum;
 	int32_t userDataSize;
@@ -394,15 +399,7 @@ struct vpu_dec_frame_arg {
 
 	int32_t mcuWidth;
 	int32_t mcuHeight;
-
-	struct nx_vid_memory_info *hCurrFrameBuffer;
 };
-
-struct vpu_dec_clr_dsp_flag_arg {
-	int32_t indexFrameDisplay;
-	struct nx_vid_memory_info frameBuffer;
-};
-
 
 /*////////////////////////////////////////////////////////////////////////////
  *		Command Arguments

@@ -147,7 +147,7 @@ struct nx_vid_memory_info *nx_alloc_frame_memory(void *drv, int32_t width,
 	for (i = 0 ; i <= chroma_planes ; i++) {
 		vid->fd[i] = mem[i]->fd;
 		vid->size[i] = mem[i]->size;
-		vid->stride[i] = (i == 0) ? (lWidth) : (cWidth);
+		vid->strideY = lWidth;
 		vid->virAddr[i] = mem[i]->virAddr;
 		vid->phyAddr[i] = mem[i]->phyAddr;
 	}

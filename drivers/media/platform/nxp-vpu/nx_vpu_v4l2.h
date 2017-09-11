@@ -29,7 +29,6 @@
 #include "nx_vpu_api.h"
 
 
-#define VPU_MAX_BUFFERS                 32
 #define STREAM_BUF_SIZE                 (4*1024*1024)
 #define ENABLE_INTERRUPT_MODE
 
@@ -117,7 +116,7 @@ struct vpu_dec_ctx {
 	int declaredFrameBufferCnt;
 	int frame_buffer_cnt;
 	int registeredCount;
-	uint32_t decPhyAddr[VPU_MAX_BUFFERS][NX_MAX_PLANES];
+	struct vpu_dec_phy_addr_info phyAddrs;
 
 	struct nx_memory_info *col_mv_buf;
 	struct nx_memory_info *slice_buf;
@@ -216,8 +215,7 @@ struct nx_vpu_buf {
 };
 
 
-dma_addr_t nx_vpu_mem_plane_addr(struct nx_vpu_ctx *c, struct vb2_buffer *v,
-	unsigned int n);
+dma_addr_t nx_vpu_mem_plane_addr(struct vb2_buffer *v, unsigned plane);
 int nx_vpu_try_run(struct nx_vpu_ctx *ctx);
 
 const struct nx_vpu_image_fmt *nx_find_image_format(unsigned fourcc);

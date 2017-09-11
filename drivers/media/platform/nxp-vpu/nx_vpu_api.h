@@ -344,7 +344,8 @@ struct vpu_dec_info {
 
 	/* Frame Buffer Information (Instance Global) */
 	int numFrameBuffer;
-	struct nx_vid_memory_info frameBuffer[MAX_REG_FRAME];
+	uint32_t strideY;
+	struct vpu_dec_phy_addr_info phyAddrs;
 	struct sec_axi_info sec_axi_info;
 	/* for CMD_SET_FRAME_CACHE_CONFIG register */
 	int cacheConfig;

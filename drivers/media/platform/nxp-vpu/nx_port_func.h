@@ -76,10 +76,10 @@ struct nx_vid_memory_info {
 	int32_t align;
 	int32_t planes;
 	uint32_t format;			/* Pixel Format(N/A) */
+	int32_t strideY;			/* Luma plane stride */
 
 	void *fd[NX_MAX_PLANES];
 	int32_t size[NX_MAX_PLANES];		/* Each plane's size. */
-	int32_t stride[NX_MAX_PLANES];		/* Each plane's stride */
 	void *virAddr[NX_MAX_PLANES];
 	uint32_t phyAddr[NX_MAX_PLANES];
 };

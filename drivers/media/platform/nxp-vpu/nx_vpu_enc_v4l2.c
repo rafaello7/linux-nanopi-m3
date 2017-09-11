@@ -1075,14 +1075,14 @@ static void nx_vpu_enc_buf_queue(struct vb2_buffer *vb)
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 
 		NX_DbgMsg(INFO_MSG, ("adding to dst: %p (%08lx)\n", vb,
-			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 0)));
+			(unsigned long)nx_vpu_mem_plane_addr(vb, 0)));
 
 		list_add_tail(&buf->list, &ctx->strm_queue);
 		ctx->strm_queue_cnt++;
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		NX_DbgMsg(INFO_MSG, ("adding to src: %p(%08lx, %08lx)\n",
-			vb, (unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 0),
-			(unsigned long)nx_vpu_mem_plane_addr(ctx, vb, 1)));
+			vb, (unsigned long)nx_vpu_mem_plane_addr(vb, 0),
+			(unsigned long)nx_vpu_mem_plane_addr(vb, 1)));
 
 		list_add_tail(&buf->list, &ctx->img_queue);
 		ctx->img_queue_cnt++;
@@ -1233,7 +1233,7 @@ static void get_stream_buffer(struct nx_vpu_ctx *ctx,
 
 	dst_mb = list_entry(ctx->strm_queue.next, struct nx_vpu_buf, list);
 
-	stream_buf->phyAddr = nx_vpu_mem_plane_addr(ctx, &dst_mb->vb, 0);
+	stream_buf->phyAddr = nx_vpu_mem_plane_addr(&dst_mb->vb, 0);
 	stream_buf->size = vb2_plane_size(&dst_mb->vb, 0);
 #ifdef USE_ION_MEMORY
 	stream_buf->virAddr = (unsigned int)cma_get_virt(stream_buf->phyAddr,
@@ -1474,10 +1474,9 @@ int vpu_enc_encode_frame(struct nx_vpu_ctx *ctx)
 	num_planes = ctx->useSingleBuf || ctx->img_fmt->singleBuffer ? 1 :
 		ctx->img_fmt->chromaInterleave ? 2 : 3;
 	for (i = 0 ; i < num_planes ; i++) {
-		pRunArg->inImgBuffer.phyAddr[i] = nx_vpu_mem_plane_addr(ctx,
+		pRunArg->inImgBuffer.phyAddr[i] = nx_vpu_mem_plane_addr(
 			&mb_entry->vb, i);
-		pRunArg->inImgBuffer.stride[i] = (i == 0) ?
-			(ctx->buf_y_width) : (ctx->buf_c_width);
+		pRunArg->inImgBuffer.strideY = ctx->buf_y_width;
 	}
 
 	if( num_planes == 1 && ctx->chroma_size > 0 ) {
