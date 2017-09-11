@@ -508,6 +508,13 @@
 		scaler@c0066000 {
 			status = "okay";
 		};
+
+		nano-videodev {
+			compatible = "nexell,nano-videodev";
+			reg = <0xc0102000 0x100>;
+			reg-names = "mlc.0";
+			status = "okay";
+		};
 	};	/*** soc ***/
 
 	panel: panel-simple {

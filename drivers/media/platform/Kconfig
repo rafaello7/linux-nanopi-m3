@@ -483,3 +483,18 @@ config VIDEO_NEXELL_CODEC
 	default n
 	---help---
 	  This is a v4l2 driver for Nexell Video Codec.
+
+config NANO_VIDEODEV
+	tristate "Video overlay device on NanoPi M3"
+	depends on VIDEO_V4L2 && DRM_NX
+	select VIDEOBUF2_CORE
+	select VIDEOBUF2_DMA_CONTIG
+	default n
+	---help---
+	  Exposes MLC (Multi Layer Controler) video layer of s5p6818 soc
+	  as a video4linux overlay output device. The device is available
+	  as /dev/video1
+
+	  Note that this layer is also available via drm, but it is unused
+	  by X-window system. Using this layer by both drm and this device
+	  may have unpredictable results.
