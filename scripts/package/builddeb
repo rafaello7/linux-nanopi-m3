@@ -153,7 +153,10 @@ fi
 if grep -q "^CONFIG_OF=y" $KCONFIG_CONFIG ; then
 	# Only some architectures with OF support have this target
 	if grep -q dtbs_install "${srctree}/arch/$SRCARCH/Makefile"; then
-		$MAKE KBUILD_SRC= INSTALL_DTBS_PATH="$tmpdir/usr/lib/$packagename" dtbs_install
+		# modified for nexell s5p6818 soc
+		$MAKE KBUILD_SRC= INSTALL_DTBS_PATH="$tmpdir/boot" dtbs_install
+		mv "$tmpdir/boot/nexell/"*.dtb "$tmpdir/boot"
+		rmdir "$tmpdir/boot/nexell"
 	fi
 fi
 
