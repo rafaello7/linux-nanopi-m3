@@ -500,14 +500,15 @@ static int VPU_DecSeqComplete(struct nx_vpu_codec_inst *pInst,
 		pInfo->bitStreamMode == BS_MODE_ROLLBACK) {
 		if (val & (1<<4)) {
 			errReason = VpuReadReg(RET_DEC_SEQ_SEQ_ERR_REASON);
-			NX_ErrMsg(("Error Reason = 0x%08x\n", errReason));
+			NX_ErrMsg(("VPU decoder error: status=0x%x reason=0x%x\n", val,
+						errReason));
 			return VPU_RET_ERROR;
 		}
 	}
 
 	if (val == 0) {
 		errReason = VpuReadReg(RET_DEC_SEQ_SEQ_ERR_REASON);
-		NX_ErrMsg(("Error Reason = 0x%08x\n", errReason));
+		NX_ErrMsg(("VPU decoder error: status=0 reason=0x%x\n", errReason));
 		return VPU_RET_ERROR;
 	}
 

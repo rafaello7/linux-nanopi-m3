@@ -1167,14 +1167,19 @@ int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode)
 	seqArg.thumbnailMode = dec_ctx->thumbnailMode;
 
 	ret = NX_VpuDecSetSeqInfo(ctx->hInst, &seqArg);
-	if (ret != VPU_RET_OK)
+	if (ret != VPU_RET_OK) {
 		NX_ErrMsg(("NX_VpuDecSetSeqInfo() failed.(ErrorCode=%d)\n",
 			ret));
+		return -EINVAL;
+	}
 
 	if (seqArg.minFrameBufCnt < 1 ||
 		seqArg.minFrameBufCnt > VPU_MAX_BUFFERS)
+	{
 		NX_ErrMsg(("Min FrameBufCnt Error(%d)!!!\n",
 			seqArg.minFrameBufCnt));
+		return -EINVAL;
+	}
 
 	ctx->width = seqArg.cropRight;
 	ctx->height = seqArg.cropBottom;
