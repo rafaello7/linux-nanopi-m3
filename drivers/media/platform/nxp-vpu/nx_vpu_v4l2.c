@@ -82,15 +82,16 @@ dma_addr_t nx_vpu_mem_plane_addr(struct vb2_buffer *v, unsigned n)
 #endif
 }
 
-int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
+int nx_vpu_enc_try_run(struct nx_vpu_ctx *ctx)
 {
 	struct nx_vpu_v4l2 *dev = ctx->dev;
+	struct vpu_enc_ctx *enc_ctx = &ctx->codec.enc;
 	unsigned int ret = 0;
 	void *err = (void *)(&dev->plat_dev->dev);
 
 	FUNC_IN();
 
-	NX_DbgMsg(INFO_MSG, ("cmd = %x\n", ctx->vpu_cmd));
+	NX_DbgMsg(INFO_MSG, ("cmd = %x\n", enc_ctx->vpu_cmd));
 
 	mutex_lock(&dev->vpu_mutex);
 
@@ -100,23 +101,23 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 
 	__set_bit(ctx->idx, &dev->ctx_work_bits);
 
-	switch (ctx->vpu_cmd) {
+	switch (enc_ctx->vpu_cmd) {
 	case GET_ENC_INSTANCE:
 		dev->curr_ctx = ctx->idx;
 		ret = vpu_enc_open_instance(ctx);
 		if (ret != 0)
 			dev_err(err, "Failed to create a new instance\n");
 		else
-			ctx->vpu_cmd = ENC_RUN;
+			enc_ctx->vpu_cmd = ENC_RUN;
 		break;
 
 	case ENC_RUN:
-		if (ctx->is_initialized == 0) {
+		if (enc_ctx->is_initialized == 0) {
 			ret = vpu_enc_init(ctx);
 			if (ret != 0)
 				dev_err(err, "enc_init failed, ret=%d\n", ret);
 			else{
-				ctx->is_initialized = 1;
+				enc_ctx->is_initialized = 1;
 				vpu_enc_get_seq_info(ctx);
 			}
 		} else {
@@ -129,8 +130,51 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 		}
 		break;
 
+	case SEQ_END:
+		if (enc_ctx->is_initialized) {
+			dev->curr_ctx = ctx->idx;
+			nx_vpu_enc_close_instance(ctx);
+			enc_ctx->is_initialized = 0;
+		}
+		break;
+
+	default:
+		ret = -EAGAIN;
+	}
+
+	__clear_bit(ctx->idx, &dev->ctx_work_bits);
+
+#ifdef ENABLE_CLOCK_GATING
+	NX_VPU_Clock(0);
+#endif
+
+	mutex_unlock(&dev->vpu_mutex);
+
+	return ret;
+}
+
+int nx_vpu_dec_try_cmd(struct nx_vpu_ctx *ctx, enum nx_vpu_cmd vpu_cmd)
+{
+	struct nx_vpu_v4l2 *dev = ctx->dev;
+	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
+	unsigned int ret = 0;
+	void *err = (void *)(&dev->plat_dev->dev);
+
+	FUNC_IN();
+
+	NX_DbgMsg(INFO_MSG, ("cmd = %x\n", vpu_cmd));
+
+	mutex_lock(&dev->vpu_mutex);
+
+#ifdef ENABLE_CLOCK_GATING
+	NX_VPU_Clock(1);
+#endif
+
+	__set_bit(ctx->idx, &dev->ctx_work_bits);
+
+	switch( vpu_cmd ) {
 	case GET_DEC_INSTANCE:
-		if( ! ctx->is_initialized ) {
+		if( dec_ctx->state == NX_VPUDEC_CLOSED ) {
 			dev->curr_ctx = ctx->idx;
 			ret = vpu_dec_open_instance(ctx);
 			if (ret != 0)
@@ -141,8 +185,7 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 					dev_err(err, "vpu_dec_parse_vfg error %d", ret);
 					nx_vpu_dec_close_instance(ctx);
 				}else{
-					ctx->is_initialized = 1;
-					ctx->vpu_cmd = SET_FRAME_BUF;
+					dec_ctx->state = NX_VPUDEC_SET_FRAMEBUF;
 				}
 			}
 		}else{
@@ -150,38 +193,55 @@ int nx_vpu_try_run(struct nx_vpu_ctx *ctx)
 		}
 		break;
 
-	case SET_FRAME_BUF:
-		ret = vpu_dec_init(ctx);
-		if (ret != 0)
-			dev_err(err, "vpu_dec_init failed, ret=%d\n", ret);
-		ctx->vpu_cmd = DEC_RUN;
-		break;
-
 	case DEC_RUN:
-		ret = vpu_dec_decode_slice(ctx);
-		if (ret != 0)
-			dev_err(err, "vpu_dec_decode_slice failed, err=%d", ret);
+		switch( dec_ctx->state ) {
+		case NX_VPUDEC_SET_FRAMEBUF:
+			ret = vpu_dec_init(ctx);
+			if (ret != 0)
+				dev_err(err, "vpu_dec_init failed, ret=%d\n", ret);
+			dec_ctx->state = NX_VPUDEC_RUNNING;
+			break;
+		case NX_VPUDEC_RUNNING:
+			ret = vpu_dec_decode_slice(ctx, false);
+			if (ret != 0)
+				dev_err(err, "vpu_dec_decode_slice failed, err=%d", ret);
+			break;
+		default:
+			break;
+		}
 		break;
 
 	case DEC_BUF_FLUSH:
-		if (ctx->is_initialized) {
+		switch( dec_ctx->state ) {
+		case NX_VPUDEC_SET_FRAMEBUF:
 			ret = NX_VpuDecFlush(ctx->hInst);
-			if (ret != 0)
-				dev_err(err, "dec_flush() is failed\n");
-			ctx->vpu_cmd = DEC_RUN;
-		}else{
-			dev_err(err, "DEC_BUF_FLUSH: not initialized\n");
+			if( ret )
+				dev_err(err, "NX_VpuDecFlush err=%d", ret);
+			dec_ctx->state = NX_VPUDEC_FLUSHED;
+			break;
+		case NX_VPUDEC_RUNNING:
+			ret = vpu_dec_decode_slice(ctx, true);
+			if( ret )
+				dev_err(err, "vpu_dec_decode_slice err=%d", ret);
+			dec_ctx->state = NX_VPUDEC_FLUSHED;
+			break;
+		default:
+			break;
 		}
 		break;
 
 	case SEQ_END:
-		if (ctx->is_initialized) {
+		if( dec_ctx->state == NX_VPUDEC_SET_FRAMEBUF ||
+				dec_ctx->state == NX_VPUDEC_RUNNING )
+		{
+			ret = NX_VpuDecFlush(ctx->hInst);
+			if( ret )
+				dev_err(err, "NX_VpuDecFlush err=%d", ret);
+		}
+		if( dec_ctx->state != NX_VPUDEC_CLOSED ) {
 			dev->curr_ctx = ctx->idx;
-			if( ctx->is_encoder )
-				nx_vpu_enc_close_instance(ctx);
-			else
-				nx_vpu_dec_close_instance(ctx);
-			ctx->is_initialized = 0;
+			nx_vpu_dec_close_instance(ctx);
+			dec_ctx->state = NX_VPUDEC_CLOSED;
 		}
 		break;
 
@@ -988,9 +1048,14 @@ static int nx_vpu_close(struct file *file)
 
 	mutex_lock(&dev->dev_mutex);
 
-	if (ctx->is_initialized) {
-		ctx->vpu_cmd = SEQ_END;
-		nx_vpu_try_run(ctx);
+	if( ctx->is_encoder ) {
+		if(ctx->codec.enc.is_initialized) {
+			ctx->codec.enc.vpu_cmd = SEQ_END;
+			nx_vpu_enc_try_run(ctx);
+		}
+	}else{
+		if(ctx->codec.dec.state != NX_VPUDEC_CLOSED)
+			nx_vpu_dec_try_cmd(ctx, SEQ_END);
 	}
 
 	if (dev->cur_num_instance == 0) {

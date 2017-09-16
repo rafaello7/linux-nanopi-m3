@@ -54,12 +54,12 @@ static int nx_vpu_enc_ctx_ready(struct nx_vpu_ctx *ctx)
 	NX_DbgMsg(INFO_MSG, ("src = %d, dst = %d\n", ctx->img_queue_cnt,
 		ctx->strm_queue_cnt));
 
-	if (ctx->vpu_cmd == ENC_RUN) {
+	if (ctx->codec.enc.vpu_cmd == ENC_RUN) {
 		if (ctx->strm_queue_cnt < 1) {
 			NX_DbgMsg(INFO_MSG, ("strm_queue_cnt error\n"));
 			return 0;
 		}
-		if (ctx->is_initialized && ctx->img_queue_cnt < 1) {
+		if (ctx->codec.enc.is_initialized && ctx->img_queue_cnt < 1) {
 			NX_DbgMsg(INFO_MSG, ("img_queue_cnt error\n"));
 			return 0;
 		}
@@ -479,13 +479,13 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 			return -EINVAL;
 		}
 
-		ctx->vpu_cmd = GET_ENC_INSTANCE;
+		ctx->codec.enc.vpu_cmd = GET_ENC_INSTANCE;
 
 		ctx->img_fmt = fmt;
 
 		ctx->strm_buf_size = pix_fmt_mp->plane_fmt[0].sizeimage;
 		pix_fmt_mp->plane_fmt[0].bytesperline = 0;
-		ret = nx_vpu_try_run(ctx);
+		ret = nx_vpu_enc_try_run(ctx);
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		struct vpu_enc_ctx *enc_ctx = &ctx->codec.enc;
 
@@ -615,7 +615,7 @@ static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 	}
 
 	if (buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		if (ctx->is_initialized == 0) {
+		if (ctx->codec.enc.is_initialized == 0) {
 			NX_ErrMsg(("%s : Not initialized!!!\n",  __func__));
 			return -EIO;
 		}
@@ -1030,7 +1030,7 @@ static int nx_vpu_enc_start_streaming(struct vb2_queue *q, unsigned int count)
 	FUNC_IN();
 
 	if (nx_vpu_enc_ctx_ready(ctx))
-		ret = nx_vpu_try_run(ctx);
+		ret = nx_vpu_enc_try_run(ctx);
 
 	return ret;
 }
@@ -1093,7 +1093,7 @@ static void nx_vpu_enc_buf_queue(struct vb2_buffer *vb)
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
 	if (nx_vpu_enc_ctx_ready(ctx))
-		nx_vpu_try_run(ctx);
+		nx_vpu_enc_try_run(ctx);
 }
 
 static struct vb2_ops nx_vpu_enc_qops = {

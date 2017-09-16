@@ -57,12 +57,12 @@ static int nx_vpu_dec_ctx_ready(struct nx_vpu_ctx *ctx)
 
 	NX_DbgMsg(INFO_MSG, ("src = %d, dpb = %d\n",
 		ctx->strm_queue_cnt, dec_ctx->dpb_queue_cnt));
-	switch( ctx->vpu_cmd ) {
-	case SET_FRAME_BUF:
+	switch( dec_ctx->state ) {
+	case NX_VPUDEC_SET_FRAMEBUF:
 		/* we need all buffers to configure VPU rotator */
 		return ctx->vq_img.start_streaming_called &&
 			dec_ctx->dpb_queue_cnt >= dec_ctx->declaredFrameBufferCnt;
-	case DEC_RUN:
+	case NX_VPUDEC_RUNNING:
 		dec_ctx->delay_frm = 1;
 		/* VPU refuses to decode slice when lacks at least two buffers from
 		 * the reported minimum */
@@ -510,8 +510,7 @@ static int handle_end_of_stream(struct nx_vpu_ctx *ctx)
 {
 	int ret;
 
-	ctx->codec.dec.flush = 1;
-	ret = nx_vpu_try_run(ctx);
+	ret = nx_vpu_dec_try_cmd(ctx, DEC_BUF_FLUSH);
 
 	return ret;
 }
@@ -523,10 +522,9 @@ static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 	if (buf->type == ctx->vq_strm.type) {
 		unsigned bytesused = buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT ?
 			buf->bytesused : buf->m.planes[0].bytesused;
-		if( bytesused == 0 && ctx->is_initialized ) {
+		if( bytesused == 0 && ctx->codec.dec.state != NX_VPUDEC_CLOSED ) {
 			return handle_end_of_stream(ctx);
 		} else {
-			ctx->codec.dec.flush = 0;
 			return vb2_qbuf(&ctx->vq_strm, buf);
 		}
 	} else {
@@ -759,8 +757,7 @@ static int nx_vpu_dec_start_streaming(struct vb2_queue *q, unsigned int count)
 	FUNC_IN();
 
 	if( q->type == ctx->vq_strm.type ) {
-		ctx->vpu_cmd = GET_DEC_INSTANCE;
-		ret = nx_vpu_try_run(ctx);
+		ret = nx_vpu_dec_try_cmd(ctx, GET_DEC_INSTANCE);
 		if( ret ) {
 			spin_lock_irqsave(&ctx->dev->irqlock, flags);
 			nx_vpu_cleanup_queue(&ctx->strm_queue, &ctx->vq_strm,
@@ -769,10 +766,10 @@ static int nx_vpu_dec_start_streaming(struct vb2_queue *q, unsigned int count)
 			ctx->strm_queue_cnt = 0;
 			spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
 		}else if( nx_vpu_dec_ctx_ready(ctx) )
-			nx_vpu_try_run(ctx);
+			nx_vpu_dec_try_cmd(ctx, DEC_RUN);
 	}else if( q->type == ctx->vq_img.type ) {
 		if ( nx_vpu_dec_ctx_ready(ctx) )
-			ret = nx_vpu_try_run(ctx);
+			ret = nx_vpu_dec_try_cmd(ctx, DEC_RUN);
 		if( ret ) {
 			spin_lock_irqsave(&ctx->dev->irqlock, flags);
 			cleanup_dpb_queue(ctx, VB2_BUF_STATE_QUEUED);
@@ -790,8 +787,7 @@ static void nx_vpu_dec_stop_streaming(struct vb2_queue *q)
 
 	FUNC_IN();
 
-	ctx->vpu_cmd = SEQ_END;
-	nx_vpu_try_run(ctx);
+	nx_vpu_dec_try_cmd(ctx, SEQ_END);
 	if (q->type == ctx->vq_img.type ) {
 		spin_lock_irqsave(&dev->irqlock, flags);
 		cleanup_dpb_queue(ctx, VB2_BUF_STATE_ERROR);
@@ -869,7 +865,7 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 		}
 		dec_ctx->dpb_bufs[idx] = buf;
 		dec_ctx->dpb_queue_cnt++;
-		if( ctx->is_initialized ) {
+		if( ctx->codec.dec.state != NX_VPUDEC_CLOSED ) {
 			int ret = NX_VpuDecClrDspFlag(ctx->hInst, idx);
 			if (ret != VPU_RET_OK) {
 				NX_ErrMsg(("ClrDspFlag error %d\n", ret));
@@ -883,7 +879,7 @@ static void nx_vpu_dec_buf_queue(struct vb2_buffer *vb)
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
 	if (nx_vpu_dec_ctx_ready(ctx))
-		nx_vpu_try_run(ctx);
+		nx_vpu_dec_try_cmd(ctx, DEC_RUN);
 }
 
 static struct vb2_ops nx_vpu_dec_qops = {
@@ -1397,7 +1393,7 @@ static void put_dec_info(struct nx_vpu_ctx *ctx,
 	dec_ctx->timeStamp[idx] = timestamp;
 }
 
-int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
+int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx, bool flush)
 {
 	struct vpu_dec_ctx *dec_ctx = &ctx->codec.dec;
 	int ret = 0;
@@ -1427,7 +1423,7 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 
 	NX_DrvMemset(&decArg, 0, sizeof(decArg));
 
-	if (dec_ctx->flush == 0) {
+	if ( !flush ) {
 		int alignSz;
 		unsigned long phyAddr;
 
@@ -1477,6 +1473,11 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 		NX_ErrMsg(("NX_VpuDecRunFrame() failed.(ErrorCode=%d)\n", ret));
 		return ret;
 	}
+	if( flush ) {
+		int ret = NX_VpuDecFlush(ctx->hInst);
+		if( ret )
+			NX_ErrMsg(("NX_VpuDecFlush err=%d\n", ret));
+	}
 
 	dec_ctx->end_Addr = decArg.strmReadPos;
 
@@ -1523,11 +1524,12 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 		dec_ctx->delay_frm = 1;
 	} else if (decArg.indexFrameDisplay == -2) {
 		NX_DbgMsg(INFO_MSG, ("Skip Frame\n"));
-	} else {
-		NX_ErrMsg(("There is not decoded img!!!\n"));
+	} else if( !flush ) {
+		NX_ErrMsg(("There is not decoded img!!! (idx=%d)\n",
+					decArg.indexFrameDisplay));
 	}
 
-	spin_lock_irqsave(&dev->irqlock, flags);
+	/*spin_lock_irqsave(&dev->irqlock, flags);*/
 
 	if( doneBuf ) {
 		int idx = decArg.indexFrameDisplay;
@@ -1536,13 +1538,27 @@ int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx)
 		vbuf->field = dec_ctx->interlace_flg[idx];
 		vbuf->flags = dec_ctx->frm_type[idx];
 		vbuf->vb2_buf.timestamp = dec_ctx->timeStamp[idx];
-		if( dec_ctx->flush )
+		if( flush )
 			vbuf->flags |= V4L2_BUF_FLAG_LAST;
-
 		vb2_buffer_done(&doneBuf->vb, VB2_BUF_STATE_DONE);
+	}else if( flush ) {
+		// report end of stream using empty buffer
+		int i, idx = 0;
+		while( idx < dec_ctx->frame_buffer_cnt &&
+				dec_ctx->dpb_bufs[idx] == NULL)
+			++idx;
+		if( idx < dec_ctx->frame_buffer_cnt ) {
+			doneBuf = dec_ctx->dpb_bufs[idx];
+			dec_ctx->dpb_bufs[idx] = NULL;
+			vbuf = to_vb2_v4l2_buffer(&doneBuf->vb);
+			vbuf->flags = V4L2_BUF_FLAG_LAST;
+			for(i = 0; i < doneBuf->vb.num_planes; i++)
+				vb2_set_plane_payload(&doneBuf->vb, i, 0);
+			vb2_buffer_done(&doneBuf->vb, VB2_BUF_STATE_DONE);
+		}
 	}
 
-	spin_unlock_irqrestore(&dev->irqlock, flags);
+	/*spin_unlock_irqrestore(&dev->irqlock, flags);*/
 
 	return ret;
 }

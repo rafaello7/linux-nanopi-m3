@@ -16,6 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/module.h>
+#include <linux/delay.h>
 #include "s5pxx18_dp_dev.h"
 
 #define	WAIT_VBLANK(m, n, o)
@@ -24,13 +25,14 @@
 static inline void dp_wait_vblank_done(int module, int layer)
 {
 	bool on = nx_mlc_get_layer_enable(module, layer);
-	int count = 20000;
+	int count = 40;
 
 	while (on) {
 		bool dflag = nx_mlc_get_dirty_flag(module, layer);
 
 		if (0 > --count || !dflag)
 			break;
+		msleep(2);
 	}
 }
 
@@ -107,6 +109,9 @@ void nx_soc_dp_plane_video_set_address_1p(int module,
 
 	nx_mlc_set_video_layer_address_yuyv(module, phys, stride);
 	dp_plane_adjust(module, LAYER_VIDEO, adjust);
+
+	if (adjust) /* wait for switch to the new buffer */
+		dp_wait_vblank_done(module, LAYER_VIDEO);
 }
 
 void nx_soc_dp_plane_video_set_address_3p(int module, int left, int top,
@@ -140,12 +145,12 @@ void nx_soc_dp_plane_video_set_address_3p(int module, int left, int top,
 	pr_debug("%s: lu:0x%x,%d, cb:0x%x,%d, cr:0x%x,%d\n",
 		__func__, lu_a, lu_s, cb_a, cb_s, cr_a, cr_s);
 
-	if (adjust)
-		dp_wait_vblank_done(module, LAYER_VIDEO);
-
 	nx_mlc_set_video_layer_stride(module, lu_s, cb_s, cr_s);
 	nx_mlc_set_video_layer_address(module, lu_a, cb_a, cr_a);
 	dp_plane_adjust(module, LAYER_VIDEO, adjust);
+
+	if (adjust) /* wait for switch to the new buffer */
+		dp_wait_vblank_done(module, LAYER_VIDEO);
 }
 
 void nx_soc_dp_plane_video_set_enable(int module, bool on, bool adjust)

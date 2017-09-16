@@ -37,6 +37,10 @@
 
 / {
 	memory {
+		/* Note: Samsung Artik u-boot fixates memory information to values
+		 * specified by CONFIG_SYS_SDRAM_BASE and CONFIG_SYS_SDRAM_SIZE in
+		 * the u-boot configuration. Values specified below are meaningless.
+		 */
 		device_type = "memory";
 		reg = <0x40000000 0x40000000>;
 	};

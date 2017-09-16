@@ -77,6 +77,9 @@ struct nx_vpu_v4l2 {
 };
 
 struct vpu_enc_ctx {
+	int is_initialized;
+	enum nx_vpu_cmd vpu_cmd;
+
 	int gop_frm_cnt;		/* gop frame counter */
 
 	int userIQP;
@@ -93,8 +96,15 @@ struct vpu_enc_ctx {
 	int reconChromaInterleave;
 };
 
+enum NxVpuDecState {
+	NX_VPUDEC_CLOSED,
+	NX_VPUDEC_SET_FRAMEBUF,
+	NX_VPUDEC_RUNNING,
+	NX_VPUDEC_FLUSHED
+};
+
 struct vpu_dec_ctx {
-	int flush;
+	enum NxVpuDecState state;
 	int delay_frm;
 	int frame_buf_delay;
 	int cur_reliable;
@@ -156,10 +166,7 @@ struct nx_vpu_ctx {
 
 	int idx;
 
-	enum nx_vpu_cmd vpu_cmd;
-
 	void *hInst;				/* VPU handle */
-	int is_initialized;
 	int is_encoder;
 	int codec_mode;
 
@@ -216,7 +223,8 @@ struct nx_vpu_buf {
 
 
 dma_addr_t nx_vpu_mem_plane_addr(struct vb2_buffer *v, unsigned plane);
-int nx_vpu_try_run(struct nx_vpu_ctx *ctx);
+int nx_vpu_enc_try_run(struct nx_vpu_ctx *ctx);
+int nx_vpu_dec_try_cmd(struct nx_vpu_ctx *ctx, enum nx_vpu_cmd);
 
 const struct nx_vpu_image_fmt *nx_find_image_format(unsigned fourcc);
 const struct nx_vpu_stream_fmt *nx_find_stream_format(struct v4l2_format *f);
@@ -265,7 +273,7 @@ int nx_vpu_dec_open(struct nx_vpu_ctx *ctx, bool singlePlaneMode);
 int vpu_dec_open_instance(struct nx_vpu_ctx *ctx);
 int vpu_dec_parse_vid_cfg(struct nx_vpu_ctx *ctx, bool singlePlaneMode);
 int vpu_dec_init(struct nx_vpu_ctx *ctx);
-int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx);
+int vpu_dec_decode_slice(struct nx_vpu_ctx *ctx, bool flush);
 void nx_vpu_dec_close_instance(struct nx_vpu_ctx*);
 
 #endif          /* #define _nx_vpu_v4l2_H */
