@@ -506,8 +506,8 @@ int nx_vidioc_enum_framesizes(struct file *file, void *priv,
 	fsize->stepwise.max_width = 1920;
 	fsize->stepwise.step_width = 8;
 	fsize->stepwise.min_height = 8;
-	fsize->stepwise.max_height = 1080;
-	fsize->stepwise.step_height = 8;
+	fsize->stepwise.max_height = 1088;
+	fsize->stepwise.step_height = 2;
 	return 0;
 }
 
