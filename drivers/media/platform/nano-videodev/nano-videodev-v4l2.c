@@ -748,7 +748,7 @@ static const struct of_device_id nano_video_of_match[] = {
 MODULE_DEVICE_TABLE(of, nano_video_of_match);
 #endif
 
-struct platform_driver nano_video_platform_driver = {
+static struct platform_driver nano_video_platform_driver = {
 	.probe = nano_video_probe,
 	.remove = nano_video_remove,
 	.driver = {
