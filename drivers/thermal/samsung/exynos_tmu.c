@@ -37,6 +37,7 @@
 
 #include "exynos_tmu.h"
 #include "../thermal_core.h"
+#include "../thermal_hwmon.h"
 
 /* Exynos generic registers */
 #define EXYNOS_TMU_REG_TRIMINFO		0x0
@@ -212,6 +213,7 @@ struct exynos_tmu_data {
 	struct thermal_zone_device *tzd;
 	unsigned int ntrip;
 	bool isInitialized;
+	bool isAddedToSysfs;
 
 	int (*tmu_initialize)(struct platform_device *pdev);
 	void (*tmu_control)(struct platform_device *pdev, bool on);
@@ -1429,6 +1431,12 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 
 	exynos_tmu_control(pdev, true);
 	data->isInitialized = true;
+	if( (ret = thermal_add_hwmon_sysfs(data->tzd)) == 0 ) {
+		data->isAddedToSysfs = true;
+	}else{
+		/* don't run away - print error only */
+		dev_err(&pdev->dev, "Failed to add in sysfs as hwmon: %d\n", ret);
+	}
 	return 0;
 
 err_thermal:
@@ -1452,6 +1460,8 @@ static int exynos_tmu_remove(struct platform_device *pdev)
 	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
 	struct thermal_zone_device *tzd = data->tzd;
 
+	if( data->isAddedToSysfs )
+		thermal_remove_hwmon_sysfs(tzd);
 	thermal_zone_of_sensor_unregister(&pdev->dev, tzd);
 	exynos_tmu_control(pdev, false);
 
