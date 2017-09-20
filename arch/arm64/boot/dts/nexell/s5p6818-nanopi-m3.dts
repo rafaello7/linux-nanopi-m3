@@ -661,5 +661,13 @@
 		interrupt-parent = <&gpio_c>;
 		interrupts = <17 IRQ_TYPE_LEVEL_HIGH>;
 	};
+
+	nanopi-thermistor {
+		compatible = "friendlyarm,nanopi-thermistor";
+		status = "okay";
+
+		io-channels = <&adc 2>;
+		io-channel-names = "nanopi-thermistor";
+	};
 };
 

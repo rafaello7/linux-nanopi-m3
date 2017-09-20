@@ -1861,6 +1861,13 @@ config SENSORS_XGENE
 	  If you say yes here you get support for the temperature
 	  and power sensors for APM X-Gene SoC.
 
+config NANOPI_THERMISTOR
+	tristate "NanoPi M3 temperature from onboard thermistor"
+	depends on ARCH_S5P6818
+	help
+	  Measures NanoPi M3 temperature using thermistor connected to
+	  ADC (analog to digital converter) of s5p6818 soc.
+
 if ACPI
 
 comment "ACPI drivers"
