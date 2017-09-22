@@ -235,6 +235,10 @@ void nx_mlc_set_video_layer_scale(u32 module_index, u32 sw, u32 sh,
 					 u32 dw, u32 dh, int bhlumaenb,
 					 int bhchromaenb, int bvlumaenb,
 					 int bvchromaenb);
+int32_t nx_mlc_get_video_layer_brightness(u32 module_index);
+void nx_mlc_set_video_layer_brightness(u32 module_index, int32_t brightness);
+uint32_t nx_mlc_get_video_layer_contrast(u32 module_index);
+void nx_mlc_set_video_layer_contrast(u32 module_index, uint32_t contrast);
 void nx_mlc_set_video_layer_luma_enhance(u32 module_index, u32 contrast,
 						int32_t brightness);
 void nx_mlc_set_video_layer_chroma_enhance(u32 module_index,
@@ -390,6 +394,7 @@ void nx_mlc_set_gamma_control_parameter(u32 module_index,
 					       int yuvalphaarray,
 					       int dither_enb);
 
+unsigned nx_mlc_get_layer_alpha256(u32 module_index, u32 layer);
 void nx_mlc_set_layer_alpha256(u32 module_index, u32 layer, u32 alpha);
 int nx_mlc_is_under_flow(u32 module_index);
 

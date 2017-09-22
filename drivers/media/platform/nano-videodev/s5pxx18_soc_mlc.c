@@ -967,6 +967,46 @@ void nx_mlc_set_video_layer_scale(u32 module_index, u32 sw, u32 sh, u32 dw,
 	       &pregister->mlcvideolayer.mlcvscale);
 }
 
+int32_t nx_mlc_get_video_layer_brightness(u32 module_index)
+{
+	struct nx_mlc_register_set *pregister;
+
+	pregister = __g_module_variables[module_index].pregister;
+	return (s8)(readl(&pregister->mlcvideolayer.mlcluenh) >> 8 & 0xff);
+}
+
+void nx_mlc_set_video_layer_brightness(u32 module_index, int32_t brightness)
+{
+	struct nx_mlc_register_set *pregister;
+	u32 val;
+
+	pregister = __g_module_variables[module_index].pregister;
+	val = readl(&pregister->mlcvideolayer.mlcluenh);
+	val &= ~0xff00;
+	val |= (brightness & 0xff) << 8;
+	writel(val, &pregister->mlcvideolayer.mlcluenh);
+}
+
+unsigned nx_mlc_get_video_layer_contrast(u32 module_index)
+{
+	struct nx_mlc_register_set *pregister;
+
+	pregister = __g_module_variables[module_index].pregister;
+	return readl(&pregister->mlcvideolayer.mlcluenh) & 0x7;
+}
+
+void nx_mlc_set_video_layer_contrast(u32 module_index, uint32_t contrast)
+{
+	struct nx_mlc_register_set *pregister;
+	u32 val;
+
+	pregister = __g_module_variables[module_index].pregister;
+	val = readl(&pregister->mlcvideolayer.mlcluenh);
+	val &= ~0x7;
+	val |= contrast & 0x7;
+	writel(val, &pregister->mlcvideolayer.mlcluenh);
+}
+
 void nx_mlc_set_video_layer_luma_enhance(u32 module_index, u32 contrast,
 					 int32_t brightness)
 {
@@ -1524,37 +1564,66 @@ void nx_mlc_set_gamma_control_parameter(u32 module_index, int rgbgammaenb,
 	writel(register_data, &pregister->mlcgammacont);
 }
 
-void nx_mlc_set_layer_alpha256(u32 module_index, u32 layer, u32 alpha)
+unsigned nx_mlc_get_layer_alpha256(u32 module_index, u32 layer)
 {
-	u32 register_data;
+	const u32 blendenb_pos = 2;
+	const u32 blendenb_mask = 0x01 << blendenb_pos;
+	u32 regvalue;
 	register struct nx_mlc_register_set *pregister;
 
-	if (alpha < 0)
-		alpha = 0;
-	if (alpha > 255)
-		alpha = 255;
+	pregister = __g_module_variables[module_index].pregister;
+	if (layer == 0 || layer == 1) {
+		regvalue = readl(&pregister->mlcrgblayer[layer].mlccontrol);
+		if( regvalue & blendenb_mask )
+			regvalue = readl(&pregister->mlcrgblayer[layer].mlctpcolor) >> 24;
+		else
+			regvalue = 255;
+	} else {
+		regvalue = readl(&pregister->mlcvideolayer.mlccontrol);
+		if( regvalue & blendenb_mask )
+			regvalue = readl(&pregister->mlcvideolayer.mlctpcolor) >> 24;
+		else
+			regvalue = 255;
+	}
+	return regvalue;
+}
+
+void nx_mlc_set_layer_alpha256(u32 module_index, u32 layer, u32 alpha)
+{
+	const u32 blendenb_pos = 2;
+	const u32 blendenb_mask = 0x01 << blendenb_pos;
+	u32 regvalue;
+	register struct nx_mlc_register_set *pregister;
+
 
 	pregister = __g_module_variables[module_index].pregister;
-	if (layer == 0) {
-		register_data =
-		    readl(&pregister->mlcrgblayer[0].mlctpcolor) & 0x00ffffff;
-		register_data = register_data | (alpha << 24);
-		writel(register_data, &pregister->mlcrgblayer[0].mlctpcolor);
-	} else if (layer == 1) {
-		register_data =
-		    readl(&pregister->mlcrgblayer[1].mlctpcolor) & 0x00ffffff;
-		register_data = register_data | (alpha << 24);
-		writel(register_data, &pregister->mlcrgblayer[1].mlctpcolor);
-	} else if (layer == 2) {
-		register_data =
-		    readl(&pregister->mlcrgblayer[1].mlctpcolor) & 0x00ffffff;
-		register_data = register_data | (alpha << 24);
-		writel(register_data, &pregister->mlcrgblayer2.mlctpcolor);
+	if (layer == 0 || layer == 1) {
+		if( alpha < 255 ) {
+			regvalue = readl(&pregister->mlcrgblayer[layer].mlccontrol);
+			if( (regvalue & blendenb_mask) == 0 ) {
+				regvalue &= ~blendenb_mask;
+				regvalue |= 1 << blendenb_pos;
+				writel(regvalue, &pregister->mlcrgblayer[layer].mlccontrol);
+			}
+		}
+		regvalue =
+		    readl(&pregister->mlcrgblayer[layer].mlctpcolor) & 0x00ffffff;
+		regvalue |= alpha << 24;
+		writel(regvalue, &pregister->mlcrgblayer[layer].mlctpcolor);
 	} else {
-		register_data =
+		if( alpha < 255 ) {
+			regvalue = readl(&pregister->mlcvideolayer.mlccontrol);
+			if( (regvalue & blendenb_mask) == 0 ) {
+				regvalue &= ~blendenb_mask;
+				regvalue |= 1 << blendenb_pos;
+				writel(regvalue, &pregister->mlcvideolayer.mlccontrol);
+			}
+		}
+
+		regvalue =
 		    readl(&pregister->mlcvideolayer.mlctpcolor) & 0x00ffffff;
-		register_data = register_data | (alpha << 24);
-		writel(register_data, &pregister->mlcvideolayer.mlctpcolor);
+		regvalue |= alpha << 24;
+		writel(regvalue, &pregister->mlcvideolayer.mlctpcolor);
 	}
 }
 

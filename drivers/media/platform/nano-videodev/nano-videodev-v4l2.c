@@ -80,15 +80,8 @@ struct nx_videolayer {
 	int dst_height;
 
 	/* color */
-	struct {
-		int alpha;	/* def= 15, 0 <= Range <= 16 */
-		int bright;	/* def= 0, -128 <= Range <= 128*/
-		int contrast; /* def= 0, 0 <= Range <= 8 */
-		//double hue;	/* def= 0, 0 <= Range <= 360 */
-		//double saturation; /* def = 0, -100 <= Range <= 100 */
-		int satura;
-		//int gamma;
-	} color;
+	int hue;		/* -180 .. 180, default 0 */
+	int saturation; /* 0 .. 127, default 64 */
 };
 
 struct nano_video_device {
@@ -434,31 +427,124 @@ static int nano_video_vidioc_overlay(struct file *file, void *fh, unsigned i)
 static int nano_video_vidioc_queryctrl(struct file *file, void *fh,
 				struct v4l2_queryctrl *a)
 {
-	unsigned controlId = a->id &
-		~(V4L2_CTRL_FLAG_NEXT_CTRL|V4L2_CTRL_FLAG_NEXT_COMPOUND);
+	static const unsigned supportedIds[] = {
+		V4L2_CID_BRIGHTNESS,
+		V4L2_CID_CONTRAST,
+		V4L2_CID_SATURATION,
+		V4L2_CID_HUE,
+		V4L2_CID_ALPHA_COMPONENT,
+		V4L2_CID_PRIVATE_BASE
+	};
+	unsigned i, controlId, nextId = 0;
 
+	controlId = a->id &
+		~(V4L2_CTRL_FLAG_NEXT_CTRL|V4L2_CTRL_FLAG_NEXT_COMPOUND);
 	if( a->id & V4L2_CTRL_FLAG_NEXT_CTRL ) {
-		if( controlId < V4L2_CID_PRIVATE_BASE ) 
-			controlId = V4L2_CID_PRIVATE_BASE;
-		else
+		for(i = 0; i < ARRAY_SIZE(supportedIds); ++i) {
+			if( supportedIds[i] > controlId && (nextId == 0 ||
+						nextId > supportedIds[i]) )
+				nextId = supportedIds[i];
+		}
+		if( nextId == 0 ) 
 			return -EINVAL;
+		controlId = nextId;
 	}
 	a->id = controlId;
 	switch( controlId ) {
-	case V4L2_CID_PRIVATE_BASE:
-		a->id = controlId;
+	case V4L2_CID_BRIGHTNESS:
 		a->type = V4L2_CTRL_TYPE_INTEGER;
-		strlcpy(a->name, "Video Layer Z-order", sizeof(a->name));
+		strlcpy(a->name, "brightness", sizeof(a->name));
+		a->minimum = -128;
+		a->maximum = 127;
+		a->step = 1;
+		a->default_value = 0;
+		a->flags = 0;
+		break;
+	case V4L2_CID_CONTRAST:
+		a->type = V4L2_CTRL_TYPE_INTEGER;
+		strlcpy(a->name, "contrast", sizeof(a->name));
+		a->minimum = 0;
+		a->maximum = 7;
+		a->step = 1;
+		a->default_value = 0;
+		a->flags = 0;
+		break;
+	case V4L2_CID_SATURATION:
+		a->type = V4L2_CTRL_TYPE_INTEGER;
+		strlcpy(a->name, "saturation", sizeof(a->name));
+		a->minimum = 0;
+		a->maximum = 127;
+		a->step = 1;
+		a->default_value = 64;
+		a->flags = 0;
+		break;
+	case V4L2_CID_HUE:
+		a->type = V4L2_CTRL_TYPE_INTEGER;
+		strlcpy(a->name, "saturation", sizeof(a->name));
+		a->minimum = -180;
+		a->maximum = 179;
+		a->step = 1;
+		a->default_value = 0;
+		a->flags = 0;
+		break;
+	case V4L2_CID_ALPHA_COMPONENT:
+		a->type = V4L2_CTRL_TYPE_INTEGER;
+		strlcpy(a->name, "alpha", sizeof(a->name));
+		a->minimum = 0;
+		a->maximum = 255;
+		a->step = 1;
+		a->default_value = 255;
+		a->flags = 0;
+		break;
+	case V4L2_CID_PRIVATE_BASE:
+		a->type = V4L2_CTRL_TYPE_INTEGER;
+		strlcpy(a->name, "layer z-order", sizeof(a->name));
 		a->minimum = 0;
 		a->maximum = 3;
 		a->step = 1;
 		a->default_value = 2;
 		a->flags = 0;
-		return 0;
-	default:
 		break;
+	default:
+		return -EINVAL;
 	}
-	return -EINVAL;
+	return 0;
+}
+
+static void setHueSaturationOnMlc(const struct nx_videolayer *vl)
+{
+	/* sin(0) .. sin(90) multiplied by 65535 */
+	static const unsigned short sine_table[91] = {
+		    0,  1143,  2287,  3429,  4571,  5711,  6850,  7986,  9120, 10251,
+		11380, 12504, 13625, 14742, 15854, 16961, 18063, 19160, 20251, 21336,
+		22414, 23485, 24549, 25606, 26655, 27696, 28728, 29752, 30766, 31771,
+		32767, 33753, 34728, 35692, 36646, 37589, 38520, 39439, 40347, 41242,
+		42125, 42994, 43851, 44694, 45524, 46340, 47141, 47929, 48701, 49459,
+		50202, 50930, 51642, 52338, 53018, 53683, 54330, 54962, 55576, 56174,
+		56754, 57318, 57863, 58392, 58902, 59394, 59869, 60325, 60762, 61182,
+		61582, 61964, 62327, 62671, 62996, 63301, 63588, 63855, 64102, 64330,
+		64539, 64728, 64897, 65046, 65175, 65285, 65375, 65445, 65495, 65525,
+		65535 
+	};
+	int sine, cosine;
+
+	if( vl->hue < -90 ) {
+		sine = -sine_table[ vl->hue + 180 ];
+		cosine = -sine_table[ -90 - vl->hue ];
+	}else if( vl->hue < 0 ) {
+		sine = -sine_table[ -vl->hue ];
+		cosine = sine_table[ 90 + vl->hue ];
+	}else if( vl->hue < 90 ) {
+		sine = sine_table[ vl->hue ];
+		cosine = sine_table[ 90 - vl->hue ];
+	}else{
+		sine = sine_table[ 180 - vl->hue ];
+		cosine = -sine_table[ vl->hue - 90 ];
+	}
+	sine = (sine * vl->saturation) / 65535;
+	cosine = (cosine * vl->saturation) / 65535;
+	nx_mlc_set_video_layer_chroma_enhance(vl->module, 0,
+			cosine, -sine, sine, cosine);
 }
 
 int nano_video_vidioc_g_ctrl(struct file *file, void *fh,
@@ -467,11 +553,28 @@ int nano_video_vidioc_g_ctrl(struct file *file, void *fh,
 	struct nx_videolayer *vl = video_drvdata(file);
 
 	switch( a->id ) {
+	case V4L2_CID_BRIGHTNESS:
+		a->value = nx_mlc_get_video_layer_brightness(vl->module);
+		break;
+	case V4L2_CID_CONTRAST:
+		a->value = nx_mlc_get_video_layer_contrast(vl->module);
+		break;
+	case V4L2_CID_SATURATION:
+		a->value = vl->saturation;
+		break;
+	case V4L2_CID_HUE:
+		a->value = vl->hue;
+		break;
+	case V4L2_CID_ALPHA_COMPONENT:
+		a->value = nx_mlc_get_layer_alpha256(vl->module, 3);
+		break;
 	case V4L2_CID_PRIVATE_BASE:
 		a->value = nx_soc_dp_plane_video_get_priority(vl->module);
-		return 0;
+		break;
+	default:
+		return -EINVAL;
 	}
-	return -EINVAL;
+	return 0;
 }
 
 int nano_video_vidioc_s_ctrl(struct file *file, void *fh,
@@ -480,13 +583,33 @@ int nano_video_vidioc_s_ctrl(struct file *file, void *fh,
 	struct nx_videolayer *vl = video_drvdata(file);
 
 	switch( a->id ) {
+	case V4L2_CID_BRIGHTNESS:
+		nx_mlc_set_video_layer_brightness(vl->module,
+				clamp_val(a->value, -128, 127));
+		break;
+	case V4L2_CID_CONTRAST:
+		nx_mlc_set_video_layer_contrast(vl->module,
+				clamp_val(a->value, 0, 7));
+		break;
+	case V4L2_CID_SATURATION:
+		vl->saturation = clamp_val(a->value, 0, 127);
+		setHueSaturationOnMlc(vl);
+		break;
+	case V4L2_CID_HUE:
+		vl->hue = clamp_val(a->value, -180, 180);
+		setHueSaturationOnMlc(vl);
+		break;
+	case V4L2_CID_ALPHA_COMPONENT:
+		nx_mlc_set_layer_alpha256(vl->module, 3, clamp_val(a->value, 0, 255));
+		break;
 	case V4L2_CID_PRIVATE_BASE:
-		if( a->value < 0 || a->value > 3 )
-			return -EINVAL;
-		nx_soc_dp_plane_video_set_priority(vl->module, a->value);
-		return 0;
+		nx_soc_dp_plane_video_set_priority(vl->module,
+				clamp_val(a->value, 0, 3));
+		break;
+	default:
+		return -EINVAL;
 	}
-	return -EINVAL;
+	return 0;
 }
 
 static const struct v4l2_ioctl_ops nano_video_ioctl_ops = {
@@ -660,10 +783,8 @@ static int nano_video_probe(struct platform_device *pdev)
 		&nano_video_ioctl_ops_mp;
 	nvdev->vl.module = 0;
 	nvdev->vl.format = NULL;
-	nvdev->vl.color.alpha = 15;
-	nvdev->vl.color.bright = 0;
-	nvdev->vl.color.contrast = 0;
-	nvdev->vl.color.satura = 0;
+	nvdev->vl.hue = 0;
+	nvdev->vl.saturation = 64;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if(res == NULL) {
@@ -721,6 +842,7 @@ static int nano_video_probe(struct platform_device *pdev)
 		nvdev->vl.dst_height = 1080;
 	}
 	platform_set_drvdata(pdev, nvdev);
+	setHueSaturationOnMlc(&nvdev->vl);
 	return 0;
 err_queue_release:
 	vb2_queue_release(&nvdev->queue);
