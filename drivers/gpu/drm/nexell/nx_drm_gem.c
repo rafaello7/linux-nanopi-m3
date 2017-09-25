@@ -1665,7 +1665,7 @@ int nx_drm_gem_wait_fence(struct drm_gem_object *obj)
 	struct dma_buf *dmabuf;
 	struct reservation_object_list *fobj;
 	struct reservation_object *resv;
-	struct fence *fence;
+	struct dma_fence *fence;
 	struct nx_gem_object *nx_obj;
 	long timeout = 100 * HZ;
 	bool interruptible = true;
@@ -1681,16 +1681,16 @@ int nx_drm_gem_wait_fence(struct drm_gem_object *obj)
 	fence = reservation_object_get_excl(resv);
 
 	if (fence) {
-		if (!fence_is_signaled(fence))
-			timeout = fence_wait_timeout(fence,
+		if (!dma_fence_is_signaled(fence))
+			timeout = dma_fence_wait_timeout(fence,
 						interruptible, timeout);
 	}
 
 	for (i = 0; fobj && timeout > 0 && i < fobj->shared_count; ++i) {
 		fence = rcu_dereference_protected(fobj->shared[i],
 					reservation_object_held(resv));
-		if (!fence_is_signaled(fence))
-			timeout = fence_wait_timeout(fence,
+		if (!dma_fence_is_signaled(fence))
+			timeout = dma_fence_wait_timeout(fence,
 					interruptible, timeout);
 	}
 
