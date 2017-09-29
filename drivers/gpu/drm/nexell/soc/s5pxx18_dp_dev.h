@@ -147,6 +147,7 @@ struct dp_control_ops {
 	int  (*enable)(struct dp_control_dev *dpc, unsigned int flags);
 	int  (*disable)(struct dp_control_dev *dpc);
 	int  (*suspend)(struct dp_control_dev *dpc);
+	void (*mode_set)(struct dp_control_dev *dpc);
 	int  (*resume)(struct dp_control_dev *dpc);
 };
 

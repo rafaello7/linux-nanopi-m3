@@ -81,4 +81,11 @@ config DRM_PANEL_SHARP_LS043T1LE01
 	  Say Y here if you want to enable support for Sharp LS043T1LE01 qHD
 	  (540x960) DSI panel as found on the Qualcomm APQ8074 Dragonboard
 
+config DRM_PANEL_NANOPI
+	tristate "NanoPi M3 LVDS/RGB panel"
+	depends on OF
+	help
+	  DRM panel driver for RGB and LVDS output of NanoPi M3 device.
+	  Say Y if you have display panel connected to one of these outputs.
+
 endmenu

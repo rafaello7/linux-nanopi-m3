@@ -133,6 +133,8 @@ int nx_drm_dp_lcd_unprepare(struct nx_drm_device *display,
 			struct drm_panel *panel);
 int nx_drm_dp_lcd_disable(struct nx_drm_device *display,
 			struct drm_panel *panel);
+void nx_drm_dp_lcd_mode_set(struct nx_drm_device *display,
+		const struct drm_display_mode*);
 
 int nx_drm_dp_mipi_transfer(struct mipi_dsi_host *host,
 			const struct mipi_dsi_msg *msg);

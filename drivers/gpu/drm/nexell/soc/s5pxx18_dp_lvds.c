@@ -51,8 +51,7 @@ static void nx_soc_dp_lvds_set_base(struct dp_control_dev *dpc,
 	nx_lvds_set_base_address(0, base[0]);
 }
 
-static int nx_soc_dp_lvds_set_prepare(struct dp_control_dev *dpc,
-			unsigned int flags)
+static void nx_soc_dp_lvds_mode_set(struct dp_control_dev *dpc)
 {
 	unsigned int val;
 	int clkid = dp_clock_lvds;
@@ -200,8 +199,6 @@ static int nx_soc_dp_lvds_set_prepare(struct dp_control_dev *dpc,
 	 * LVDS PHY Reset, make sure last.
 	 */
 	lvds_phy_reset(rsc, dev->num_resets);
-
-	return 0;
 }
 
 static int nx_soc_dp_lvds_set_unprepare(struct dp_control_dev *dpc)
@@ -240,7 +237,7 @@ static int nx_soc_dp_lvds_set_disable(struct dp_control_dev *dpc)
 
 static struct dp_control_ops lvds_dp_ops = {
 	.set_base = nx_soc_dp_lvds_set_base,
-	.prepare = nx_soc_dp_lvds_set_prepare,
+	.mode_set = nx_soc_dp_lvds_mode_set,
 	.unprepare = nx_soc_dp_lvds_set_unprepare,
 	.enable = nx_soc_dp_lvds_set_enable,
 	.disable = nx_soc_dp_lvds_set_disable,

@@ -464,7 +464,7 @@
                 clk_div_lv0 = <16>;
                 clk_src_lv1 = <7>;
                 clk_div_lv1 = <1>;
-                out_format = <2>;
+                out_format = <3>;
                 invert_field = <0>;
                 swap_rb = <0>;
                 yc_order = <0>;
@@ -479,6 +479,18 @@
                 ev_end_offset = <0>;
             };
         };
+
+        dp_drm_lvds: display_drm_lvds {
+			status = "ok";
+			remote-endpoint = <&lvds_panel>;
+			dp_control {
+				clk_src_lv0 = <0>;
+				clk_div_lv0 = <16>;
+				clk_src_lv1 = <7>;
+				clk_div_lv1 = <1>;
+				out_format = <3>;
+			};
+		};
 
 		rtc@c0010c00 {
             status = "okay";
@@ -521,17 +533,24 @@
 		};
 	};	/*** soc ***/
 
-	panel: panel-simple {
-		compatible = "samsung,ltn101nt05", "simple-panel";
+	panel_lvds {
+		compatible = "nanopi,nano-panel";
+		lvds;
+		status = "okay";
+
+		port {
+			lvds_panel: endpoint {
+			};
+		};
+	};
+
+	panel_rgb {
+		compatible = "nanopi,nano-panel";
 		status = "okay";
 
 		pinctrl-names = "default";
 		pinctrl-0 = <&dp_rgb_vclk &dp_rgb_vsync &dp_rgb_hsync
 			&dp_rgb_de &dp_rgb_R &dp_rgb_G &dp_rgb_B>;
-		enable-gpios = <&gpio_d 17 0>;
-
-		width-mm = <210>;
-		height-mm = <158>;
 
 		port {
 			rgb_panel: endpoint {

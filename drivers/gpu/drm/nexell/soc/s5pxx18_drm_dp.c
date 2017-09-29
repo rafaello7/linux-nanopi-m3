@@ -21,6 +21,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/dma-buf.h>
+#include <linux/clk.h>
 #include <drm/drm_encoder.h>
 
 #include "../nx_drm_drv.h"
@@ -254,7 +255,7 @@ int nx_drm_dp_panel_res_parse(struct device *dev,
 	/*
 	 * set sub device resources
 	 */
-	np = of_find_node_by_name(node, "dp-resource");
+	np = of_get_child_by_name(node, "dp-resource");
 	if (!np)
 		return 0;
 
@@ -1104,6 +1105,33 @@ int nx_drm_dp_lcd_prepare(struct nx_drm_device *display,
 		ops->prepare(dpc, panel ? 1 : 0);
 
 	return 0;
+}
+
+void nx_drm_dp_lcd_mode_set(struct nx_drm_device *display,
+			const struct drm_display_mode *mode)
+{
+	struct dp_control_dev *dpc = display_to_dpc(display);
+	struct dp_control_ops *ops = dpc->ops;
+	char clk_name[16];
+	struct clk *clk;
+	unsigned long clk_rate = 800000000;
+
+	sprintf(clk_name, "pll%d", dpc->ctrl.clk_src_lv0);
+	clk = clk_get(NULL, clk_name);
+	if( clk ) {
+		clk_rate = clk_get_rate(clk);
+		clk_put(clk);
+	}else{
+		DRM_ERROR("unable to get rate of %s; assuming %lu\n",
+				clk_name, clk_rate);
+	}
+	dpc->ctrl.clk_div_lv0 = (clk_rate/1000 + mode->clock / 2) / mode->clock;
+	dpc->sync.h_sync_invert = !(mode->flags & DRM_MODE_FLAG_NHSYNC);
+	dpc->sync.v_sync_invert = !(mode->flags & DRM_MODE_FLAG_NVSYNC);
+	DRM_INFO("%s: lv0 divisor set to %d\n", dp_panel_type_name(dpc->panel_type),
+			dpc->ctrl.clk_div_lv0);
+	if (ops && ops->mode_set)
+		ops->mode_set(dpc);
 }
 
 int nx_drm_dp_lcd_enable(struct nx_drm_device *display,

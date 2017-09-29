@@ -196,6 +196,14 @@ bool panel_lcd_mode_fixup(struct device *dev,
 	return true;
 }
 
+static void panel_lcd_mode_set(struct device *dev,
+		struct drm_display_mode *mode)
+{
+	struct lcd_context *ctx = dev_get_drvdata(dev);
+
+	nx_drm_dp_lcd_mode_set(ctx->display, mode);
+}
+
 static void panel_lcd_commit(struct device *dev)
 {
 }
@@ -337,6 +345,7 @@ static struct nx_drm_ops panel_lcd_ops = {
 	.get_modes = panel_lcd_get_modes,
 	.check_mode = panel_lcd_check_mode,
 	.mode_fixup = panel_lcd_mode_fixup,
+	.mode_set = panel_lcd_mode_set,
 	.commit = panel_lcd_commit,
 	.dpms = panel_lcd_dmps,
 };
