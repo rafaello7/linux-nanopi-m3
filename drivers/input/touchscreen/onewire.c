@@ -7,6 +7,7 @@
 #include <linux/gpio.h>
 #include <linux/clk.h>
 #include <linux/interrupt.h>
+#include <linux/backlight.h>
 #include <soc/nexell/panel-nanopi.h>
 
 
@@ -47,10 +48,11 @@ enum OneWireState {
 
 
 struct onewire_device {
-	struct device *dev;
-	u32 irq_timer;
-	struct gpio_desc *gpiod;
-	void __iomem *regs;
+	struct device *dev;			// platform device
+	u32 irq_timer;				// hardware timer number used for irq's
+	struct gpio_desc *gpiod;	// onewire gpio
+	void __iomem *regs;			// timer registers
+	struct backlight_device *bl;
 	unsigned rate25Hz;			// timer rate for 25 Hz
 	unsigned rate9600Hz;		// timer rate for 9600 Hz
 	enum OneWireState state;
@@ -58,11 +60,12 @@ struct onewire_device {
 	bool backlight_init_success;
 	bool has_key_data;
 	bool has_ts_data;
-	unsigned char backlight_req;
+	unsigned char backlight_req;	// pending backlight brightness change
+									// request; 0 for none
 	unsigned io_bit_count;
-	u8 io_data[4];
-	unsigned char one_wire_request;
-	bool isTouchDown;
+	u8 io_data[4];					// data being sent or received
+	unsigned char one_wire_request; // request (being) sent (if non-IDLE state)
+	bool isTouchDown;				// last reported touch state: down/up
 };
 
 static int lcd_type;
@@ -164,6 +167,25 @@ static u8 crc8sum(u8 *pdata, unsigned nbytes)
 	return crc;
 }
 
+static int onew_backlight_update_status(struct backlight_device *bl)
+{
+	struct onewire_device *onew = bl_get_data(bl);
+	int brightness = bl->props.brightness;
+
+	if (bl->props.power != FB_BLANK_UNBLANK ||
+			bl->props.fb_blank != FB_BLANK_UNBLANK ||
+			bl->props.state & (BL_CORE_SUSPENDED | BL_CORE_FBBLANK))
+		brightness = 0;
+
+	onew->backlight_req = 0x80 + brightness;
+	return 0;
+}
+
+static const struct backlight_ops onewire_backlight_ops = {
+	.options	= BL_CORE_SUSPENDRESUME,
+	.update_status	= onew_backlight_update_status,
+};
+
 static void notify_info_data(struct onewire_device *onew)
 {
 	dev_info(onew->dev, "lcd type: %d, year: %d, week: %d\n",
@@ -180,9 +202,25 @@ static void notify_info_data(struct onewire_device *onew)
 
 static void notify_bl_data(struct onewire_device *onew)
 {
+	struct backlight_properties props;
+
 	dev_info(onew->dev, "backlight data: %x,%x,%x\n",
 			onew->io_data[0], onew->io_data[1], onew->io_data[2]);
 	onew->backlight_init_success = true;
+
+	memset(&props, 0, sizeof(props));
+	props.type = BACKLIGHT_PLATFORM;
+	props.brightness = 96;
+	props.max_brightness = 127;
+	onew->bl = devm_backlight_device_register(onew->dev, dev_name(onew->dev),
+					onew->dev, onew, &onewire_backlight_ops, &props);
+	if( IS_ERR(onew->bl) ) {
+		dev_err(onew->dev, "failed to register backlight: %ld\n",
+				PTR_ERR(onew->bl));
+		onew->bl = NULL;
+	}else{
+		dev_info(onew->dev, "added backlight device");
+	}
 }
 
 static void ts_if_report_key(int key)
@@ -278,6 +316,7 @@ static irqreturn_t onewire_irq_handler(int irq, void *data)
 	onew->io_bit_count--;
 	switch( onew->state ) {
 	case IDLE:
+		timer_stop(onew);
 		if( start_one_wire_session(onew) ) {
 			// init transfer and start timer
 			gpiod_direction_output(onew->gpiod, 0);
@@ -285,8 +324,10 @@ static irqreturn_t onewire_irq_handler(int irq, void *data)
 			onew->state = START;
 			timer_count(onew, onew->rate9600Hz);
 			timer_start(onew, true, true);
-		}else
+		}else{
+			timer_count(onew, onew->rate25Hz);
 			timer_start(onew, true, false);
+		}
 		break;
 	case START:
 		if (onew->io_bit_count == 0) {
