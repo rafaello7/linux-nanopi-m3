@@ -83,7 +83,7 @@ config DRM_PANEL_SHARP_LS043T1LE01
 
 config DRM_PANEL_NANOPI
 	tristate "NanoPi M3 LVDS/RGB panel"
-	depends on OF
+	depends on OF && TOUCHSCREEN_1WIRE
 	help
 	  DRM panel driver for RGB and LVDS output of NanoPi M3 device.
 	  Say Y if you have display panel connected to one of these outputs.

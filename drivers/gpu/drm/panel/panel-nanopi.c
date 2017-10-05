@@ -4,6 +4,7 @@
 #include <drm/drmP.h>
 #include <drm/drm_panel.h>
 #include <video/videomode.h>
+#include <soc/nexell/panel-nanopi.h>
 
 
 static char connected_rgb[8], connected_lvds[8];
@@ -11,17 +12,9 @@ module_param_string(rgb, connected_rgb, sizeof(connected_rgb), 0444);
 module_param_string(lvds, connected_lvds, sizeof(connected_lvds), 0444);
 
 
-struct panel_desc {
-	char name[8];
-	unsigned bpc;		// max bits per color
-	unsigned p_width;	// physical width, in millimeters
-	unsigned p_height;	// physical height
-	const struct drm_display_mode mode;
-};
-
 struct panel_nanopi {
 	struct drm_panel base;
-	const struct panel_desc *desc;
+	const struct nanopi_panel_desc *desc;
 };
 
 static inline struct panel_nanopi *to_panel_nanopi(struct drm_panel *panel)
@@ -35,7 +28,7 @@ static int panel_nanopi_get_modes(struct drm_panel *panel)
 	struct drm_connector *connector = panel->connector;
 	struct drm_device *drm = panel->drm;
 	struct drm_display_mode *mode;
-	const struct drm_display_mode *m = &p->desc->mode;
+	const struct drm_display_mode *m = p->desc->mode;
 
 	if( !p->desc )
 		return 0;
@@ -55,22 +48,22 @@ static int panel_nanopi_get_modes(struct drm_panel *panel)
 	return 1;
 }
 
-int panel_nanopi_disable(struct drm_panel *panel)
+static int panel_nanopi_disable(struct drm_panel *panel)
 {
 	return 0;
 }
 
-int panel_nanopi_unprepare(struct drm_panel *panel)
+static int panel_nanopi_unprepare(struct drm_panel *panel)
 {
 	return 0;
 }
 
-int panel_nanopi_prepare(struct drm_panel *panel)
+static int panel_nanopi_prepare(struct drm_panel *panel)
 {
 	return 0;
 }
 
-int panel_nanopi_enable(struct drm_panel *panel)
+static int panel_nanopi_enable(struct drm_panel *panel)
 {
 	return 0;
 }
@@ -83,267 +76,324 @@ static const struct drm_panel_funcs panel_nanopi_funcs = {
 	.disable = panel_nanopi_disable
 };
 
-static const struct panel_desc nanopi_panels[] = {
+static const struct drm_display_mode mode_hd101 = {
+	.clock = 66670,
+	.hdisplay = 1280,
+	.hsync_start = 1280 + 16,
+	.hsync_end = 1280 + 16 + 30,
+	.htotal = 1280 + 16 + 30 + 16,
+	.vdisplay = 800,
+	.vsync_start = 800 + 8,
+	.vsync_end = 800 + 8 + 12,
+	.vtotal = 800 + 8 + 12 + 8,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
+			DRM_MODE_FLAG_NCSYNC
+};
+
+static const struct drm_display_mode mode_hd700 = {
+	.clock = 67184,
+	.hdisplay = 800,
+	.hsync_start = 800 + 20,
+	.hsync_end = 800 + 20 + 24,
+	.htotal = 800 + 20 + 24 + 20,
+	.vdisplay = 1280,
+	.vsync_start = 1280 + 4,
+	.vsync_end = 1280 + 4 + 8,
+	.vtotal = 1280 + 4 + 8 + 4,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
+			DRM_MODE_FLAG_NCSYNC
+};
+
+static const struct drm_display_mode mode_s70 = {
+	.clock = 28630,
+	.hdisplay = 800,
+	.hsync_start = 800 + 48,
+	.hsync_end = 800 + 48 + 10,
+	.htotal = 800 + 48 + 10 + 36,
+	.vdisplay = 480,
+	.vsync_start = 480 + 22,
+	.vsync_end = 480 + 22 + 8,
+	.vtotal = 480 + 22 + 8 + 15,
+	.vrefresh = 61,
+};
+
+static const struct drm_display_mode mode_s702 = {
+	.clock = 28502,
+	.hdisplay = 800,
+	.hsync_start = 800 + 44,
+	.hsync_end = 800 + 44 + 20,
+	.htotal = 800 + 44 + 20 + 26,
+	.vdisplay = 480,
+	.vsync_start = 480 + 22,
+	.vsync_end = 480 + 22 + 8,
+	.vtotal = 480 + 22 + 8 + 15,
+	.vrefresh = 61,
+	.flags = DRM_MODE_FLAG_NCSYNC
+};
+
+static const struct drm_display_mode mode_s70d = {
+	.clock = 31531,
+	.hdisplay = 800,
+	.hsync_start = 800 + 80,
+	.hsync_end = 800 + 80 + 10,
+	.htotal = 800 + 80 + 10 + 78,
+	.vdisplay = 480,
+	.vsync_start = 480 + 22,
+	.vsync_end = 480 + 22 + 8,
+	.vtotal = 480 + 22 + 8 + 24,
+	.vrefresh = 61,
+};
+
+static const struct drm_display_mode mode_x710 = {
+	.clock = 49971,
+	.hdisplay = 1024,
+	.hsync_start = 1024 + 84,
+	.hsync_end = 1024 + 84 + 88,
+	.htotal = 1024 + 84 + 88 + 84,
+	.vdisplay = 600,
+	.vsync_start = 600 + 10,
+	.vsync_end = 600 + 10 + 20,
+	.vtotal = 600 + 10 + 20 + 10,
+	.vrefresh = 61,
+};
+
+static const struct drm_display_mode mode_s430 = {
+	.clock = 28492,
+	.hdisplay = 480,
+	.hsync_start = 480 + 64,
+	.hsync_end = 480 + 64 + 16,
+	.htotal = 480 + 64 + 16 + 0,
+	.vdisplay = 800,
+	.vsync_start = 800 + 32,
+	.vsync_end = 800 + 32 + 16,
+	.vtotal = 800 + 32 + 16 + 0,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NCSYNC
+};
+
+static const struct drm_display_mode mode_h43 = {
+	.clock = 9933,
+	.hdisplay = 480,
+	.hsync_start = 480 + 5,
+	.hsync_end = 480 + 5 + 2,
+	.htotal = 480 + 5 + 2 + 40,
+	.vdisplay = 272,
+	.vsync_start = 272 + 8,
+	.vsync_end = 272 + 8 + 2,
+	.vtotal = 272 + 8 + 2 + 8,
+	.vrefresh = 65,
+};
+
+static const struct drm_display_mode mode_p43 = {
+	.clock = 9968,
+	.hdisplay = 480,
+	.hsync_start = 480 + 5,
+	.hsync_end = 480 + 5 + 2,
+	.htotal = 480 + 5 + 2 + 40,
+	.vdisplay = 272,
+	.vsync_start = 272 + 8,
+	.vsync_end = 272 + 8 + 2,
+	.vtotal = 272 + 8 + 2 + 9,
+	.vrefresh = 65,
+	.flags = DRM_MODE_FLAG_NCSYNC
+};
+
+static const struct drm_display_mode mode_w35 = {
+	.clock = 6726,
+	.hdisplay = 320,
+	.hsync_start = 320 + 4,
+	.hsync_end = 320 + 4 + 4,
+	.htotal = 320 + 4 + 4 + 70,
+	.vdisplay = 240,
+	.vsync_start = 240 + 4,
+	.vsync_end = 240 + 4 + 4,
+	.vtotal = 240 + 4 + 4 + 12,
+	.vrefresh = 65,
+	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
+			DRM_MODE_FLAG_NCSYNC
+};
+
+static const struct drm_display_mode mode_atops = {
+	.clock = 34539,
+	.hdisplay = 800,
+	.hsync_start = 800 + 210,
+	.hsync_end = 800 + 210 + 20,
+	.htotal = 800 + 210 + 20 + 46,
+	.vdisplay = 480,
+	.vsync_start = 480 + 22,
+	.vsync_end = 480 + 22 + 10,
+	.vtotal = 480 + 22 + 10 + 23,
+	.vrefresh = 60,
+};
+
+static const struct nanopi_panel_desc nanopi_panels[] = {
 	{
 		.name = "hd101",
+		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 218,
 		.p_height = 136,
-		.mode = {
-			.clock = 66670,
-			.hdisplay = 1280,
-			.hsync_start = 1280 + 16,
-			.hsync_end = 1280 + 16 + 30,
-			.htotal = 1280 + 16 + 30 + 16,
-			.vdisplay = 800,
-			.vsync_start = 800 + 8,
-			.vsync_end = 800 + 8 + 12,
-			.vtotal = 800 + 8 + 12 + 8,
-			.vrefresh = 60,
-			.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
-					DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_hd101,
 	},{
 		.name = "hd101b",
+		.i2c_touch_drv = "Goodix-TS",
 		.bpc  = 8,
 		.p_width = 218,
 		.p_height = 136,
-		.mode = {
-			.clock = 66670,
-			.hdisplay = 1280,
-			.hsync_start = 1280 + 16,
-			.hsync_end = 1280 + 16 + 30,
-			.htotal = 1280 + 16 + 30 + 16,
-			.vdisplay = 800,
-			.vsync_start = 800 + 8,
-			.vsync_end = 800 + 8 + 12,
-			.vtotal = 800 + 8 + 12 + 8,
-			.vrefresh = 60,
-			.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
-					DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_hd101,
 	},{
 		.name = "hd700",
+		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 94,
 		.p_height = 151,
-		.mode = {
-			.clock = 67184,
-			.hdisplay = 800,
-			.hsync_start = 800 + 20,
-			.hsync_end = 800 + 20 + 24,
-			.htotal = 800 + 20 + 24 + 20,
-			.vdisplay = 1280,
-			.vsync_start = 1280 + 4,
-			.vsync_end = 1280 + 4 + 8,
-			.vtotal = 1280 + 4 + 8 + 4,
-			.vrefresh = 60,
-			.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
-					DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_hd700,
 	},{
 		.name = "hd702",
+		.onewireType = 24,
+		.i2c_touch_drv = "Goodix-TS",
 		.bpc  = 8,
 		.p_width = 94,
 		.p_height = 151,
-		.mode = {
-			.clock = 67184,
-			.hdisplay = 800,
-			.hsync_start = 800 + 20,
-			.hsync_end = 800 + 20 + 24,
-			.htotal = 800 + 20 + 24 + 20,
-			.vdisplay = 1280,
-			.vsync_start = 1280 + 4,
-			.vsync_end = 1280 + 4 + 8,
-			.vtotal = 1280 + 4 + 8 + 4,
-			.vrefresh = 60,
-			.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
-					DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_hd700,
 	},{
 		.name = "s70",
+		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 155,
 		.p_height = 93,
-		.mode = {
-			.clock = 28630,
-			.hdisplay = 800,
-			.hsync_start = 800 + 48,
-			.hsync_end = 800 + 48 + 10,
-			.htotal = 800 + 48 + 10 + 36,
-			.vdisplay = 480,
-			.vsync_start = 480 + 22,
-			.vsync_end = 480 + 22 + 8,
-			.vtotal = 480 + 22 + 8 + 15,
-			.vrefresh = 61,
-		}
+		.mode = &mode_s70,
 	},{
 		.name = "s702",
+		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 155,
 		.p_height = 93,
-		.mode = {
-			.clock = 28502,
-			.hdisplay = 800,
-			.hsync_start = 800 + 44,
-			.hsync_end = 800 + 44 + 20,
-			.htotal = 800 + 44 + 20 + 26,
-			.vdisplay = 480,
-			.vsync_start = 480 + 22,
-			.vsync_end = 480 + 22 + 8,
-			.vtotal = 480 + 22 + 8 + 15,
-			.vrefresh = 61,
-			.flags = DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_s702,
 	},{
 		.name = "s70d",
 		.bpc  = 8,
 		.p_width = 155,
 		.p_height = 93,
-		.mode = {
-			.clock = 31531,
-			.hdisplay = 800,
-			.hsync_start = 800 + 80,
-			.hsync_end = 800 + 80 + 10,
-			.htotal = 800 + 80 + 10 + 78,
-			.vdisplay = 480,
-			.vsync_start = 480 + 22,
-			.vsync_end = 480 + 22 + 8,
-			.vtotal = 480 + 22 + 8 + 24,
-			.vrefresh = 61,
-		}
+		.mode = &mode_s70d,
 	},{
 		.name = "x710",
+		.onewireType = 28,
+		.i2c_touch_drv = "it7260",
+		.i2c_touch_reg = 0x46,
 		.bpc  = 8,
 		.p_width = 154,
 		.p_height = 90,
-		.mode = {
-			.clock = 49971,
-			.hdisplay = 1024,
-			.hsync_start = 1024 + 84,
-			.hsync_end = 1024 + 84 + 88,
-			.htotal = 1024 + 84 + 88 + 84,
-			.vdisplay = 600,
-			.vsync_start = 600 + 10,
-			.vsync_end = 600 + 10 + 20,
-			.vtotal = 600 + 10 + 20 + 10,
-			.vrefresh = 61,
-		}
+		.mode = &mode_x710,
 	},{
 		.name = "s430",
+		.i2c_touch_drv = "himax_ts",
 		.bpc  = 8,
 		.p_width = 108,
 		.p_height = 64,
-		.mode = {
-			.clock = 28492,
-			.hdisplay = 480,
-			.hsync_start = 480 + 64,
-			.hsync_end = 480 + 64 + 16,
-			.htotal = 480 + 64 + 16 + 0,
-			.vdisplay = 800,
-			.vsync_start = 800 + 32,
-			.vsync_end = 800 + 32 + 16,
-			.vtotal = 800 + 32 + 16 + 0,
-			.vrefresh = 60,
-			.flags = DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_s430,
 	},{
 		.name = "h43",
 		.bpc  = 8,
 		.p_width = 96,
 		.p_height = 54,
-		.mode = {
-			.clock = 9933,
-			.hdisplay = 480,
-			.hsync_start = 480 + 5,
-			.hsync_end = 480 + 5 + 2,
-			.htotal = 480 + 5 + 2 + 40,
-			.vdisplay = 272,
-			.vsync_start = 272 + 8,
-			.vsync_end = 272 + 8 + 2,
-			.vtotal = 272 + 8 + 2 + 8,
-			.vrefresh = 65,
-		}
+		.mode = &mode_h43,
 	},{
 		.name = "p43",
 		.bpc  = 8,
 		.p_width = 96,
 		.p_height = 54,
-		.mode = {
-			.clock = 9968,
-			.hdisplay = 480,
-			.hsync_start = 480 + 5,
-			.hsync_end = 480 + 5 + 2,
-			.htotal = 480 + 5 + 2 + 40,
-			.vdisplay = 272,
-			.vsync_start = 272 + 8,
-			.vsync_end = 272 + 8 + 2,
-			.vtotal = 272 + 8 + 2 + 9,
-			.vrefresh = 65,
-			.flags = DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_p43,
 	},{
 		.name = "w35",
 		.bpc  = 6,
 		.p_width = 70,
 		.p_height = 52,
-		.mode = {
-			.clock = 6726,
-			.hdisplay = 320,
-			.hsync_start = 320 + 4,
-			.hsync_end = 320 + 4 + 4,
-			.htotal = 320 + 4 + 4 + 70,
-			.vdisplay = 240,
-			.vsync_start = 240 + 4,
-			.vsync_end = 240 + 4 + 4,
-			.vtotal = 240 + 4 + 4 + 12,
-			.vrefresh = 65,
-			.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
-					DRM_MODE_FLAG_NCSYNC
-		}
+		.mode = &mode_w35,
 	},{
 		.name = "atops",
 		.bpc  = 6,
 		.p_width = 155,
 		.p_height = 93,
-		.mode = {
-			.clock = 34539,
-			.hdisplay = 800,
-			.hsync_start = 800 + 210,
-			.hsync_end = 800 + 210 + 20,
-			.htotal = 800 + 210 + 20 + 46,
-			.vdisplay = 480,
-			.vsync_start = 480 + 22,
-			.vsync_end = 480 + 22 + 10,
-			.vtotal = 480 + 22 + 10 + 23,
-			.vrefresh = 60,
-		}
+		.mode = &mode_atops,
 	},
 };
 
-static int panel_nanopi_platform_probe(struct platform_device *pdev)
+static const struct nanopi_panel_desc *getPanelDescByName(const char *name)
 {
-	int i, err;
-	struct panel_nanopi *panel;
-	const struct panel_desc *desc = NULL;
-	bool isLvds;
-	const char *panelName;
+	const struct nanopi_panel_desc *desc = NULL;
+	int i;
 
-	isLvds = of_property_read_bool(pdev->dev.of_node, "lvds");
-	panelName = isLvds ? connected_lvds : connected_rgb;
-	if( panelName[0] ) {
+	for(i = 0; i < ARRAY_SIZE(nanopi_panels) && desc == NULL; ++i) {
+		if( !strcmp(nanopi_panels[i].name, name) )
+			desc = nanopi_panels + i;
+	}
+	if( desc == NULL ) {
+		pr_err("unknown panel \"%s\"\n", name);
+		pr_info("available panels:");
+		for(i = 0; i < ARRAY_SIZE(nanopi_panels); ++i)
+			pr_cont(" %s", nanopi_panels[i].name);
+		pr_cont("\n");
+	}
+	return desc;
+}
+
+const struct nanopi_panel_desc *nanopi_panelrgb_get_connected(void)
+{
+	const struct nanopi_panel_desc *desc = NULL;
+	int i, onewireType;
+
+	if( connected_rgb[0] )
+		return getPanelDescByName(connected_rgb);
+	onewireType = onewire_get_lcd_type();
+	if( onewireType > 0 ) {
 		for(i = 0; i < ARRAY_SIZE(nanopi_panels) && desc == NULL; ++i) {
-			if( !strcmp(nanopi_panels[i].name, panelName) )
+			if( nanopi_panels[i].onewireType == onewireType )
 				desc = nanopi_panels + i;
 		}
 		if( desc == NULL ) {
-			dev_err(&pdev->dev, "unknown panel \"%s\"\n", panelName);
-			dev_info(&pdev->dev, "available panels:");
-			for(i = 0; i < ARRAY_SIZE(nanopi_panels); ++i)
-				pr_cont(" %s", nanopi_panels[i].name);
-			pr_cont("\n");
+			pr_err("unknown FriendlyArm panel type detected: %d\n", onewireType);
+			pr_info("please file kernel issue on https://github.com/rafaello7/linux-nanopi-m3"
+				   " with information about the connected panel type\n");
+			pr_info("panel type may be set now only manually by add u-boot bootargs param: "
+					"panel-nanopi.lcd=<your panel>\n");
 		}
 	}
+	return desc;
+}
+EXPORT_SYMBOL_GPL(nanopi_panelrgb_get_connected);
+
+bool nanopi_panelrgb_issensor_1wire(int onewireType)
+{
+	const struct nanopi_panel_desc *desc = NULL;
+	int i;
+
+	if( connected_rgb[0] )
+		desc = getPanelDescByName(connected_rgb);
+	else{
+		for(i = 0; i < ARRAY_SIZE(nanopi_panels) && desc == NULL; ++i) {
+			if( nanopi_panels[i].onewireType == onewireType )
+				desc = nanopi_panels + i;
+		}
+	}
+	return desc && desc->i2c_touch_drv &&
+		!strcmp(desc->i2c_touch_drv, "onewire");
+}
+
+static int panel_nanopi_platform_probe(struct platform_device *pdev)
+{
+	int err;
+	struct panel_nanopi *panel;
+	const struct nanopi_panel_desc *desc;
+	bool isLvds;
+
+	isLvds = of_property_read_bool(pdev->dev.of_node, "lvds");
+	if( isLvds )
+		desc = connected_lvds[0] ? getPanelDescByName(connected_lvds) : NULL;
+	else
+		desc = nanopi_panelrgb_get_connected();
 	if( desc == NULL )
 		return -ENODEV;
 	panel = devm_kzalloc(&pdev->dev, sizeof(*panel), GFP_KERNEL);
@@ -359,7 +409,7 @@ static int panel_nanopi_platform_probe(struct platform_device *pdev)
 		return err;
 	dev_set_drvdata(&pdev->dev, panel);
 	dev_info(&pdev->dev, "added %s panel for %s\n", isLvds ? "lvds" : "rgb",
-			panelName);
+			desc->name);
 	return 0;
 }
 

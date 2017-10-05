@@ -1213,4 +1213,41 @@ config TOUCHSCREEN_ROHM_BU21023
 	  To compile this driver as a module, choose M here: the
 	  module will be called bu21023_ts.
 
+config TOUCHSCREEN_IT7260
+	tristate "ITE it7260 TouchScreen driver"
+	depends on ARCH_S5P6818
+	help
+	  Say Y here to support ITE it7260 based touchscreen on
+	  FriendlyARM NanoPi2 development board.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called it7260_mts.ko.
+
+config TOUCHSCREEN_1WIRE
+	tristate "1-Wire host and Touch Screen Driver"
+	depends on ARCH_S5P6818
+	help
+	  Say Y here to enable the 1-Wire host and Touch Screen driver for
+	  FriendlyARM NanoPi3
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called onewire.
+
+config SENSOR_LOADER_1WIRE
+	tristate "Touch sensor loader for NanoPi M3"
+	depends on ARCH_S5P6818
+	help
+	  Loads appropriate touch sensor driver depend on panel
+	  detected on onewire.
+
+	  If you have NanoPi and one of RGB panels from FriendlyArm
+	  than say Y or M here.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called onewire-touch.
+
 endif

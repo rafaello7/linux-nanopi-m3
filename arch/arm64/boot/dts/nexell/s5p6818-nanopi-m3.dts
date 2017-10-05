@@ -62,6 +62,7 @@
 			pwm0:pwm0@c00ba000 { clock-frequency = <100000000>; };
 			i2c0:i2c@c00ae000  { clock-frequency = <200000000>; };
 			i2c1:i2c@c00af000  { clock-frequency = <200000000>; };
+			i2c2:i2c@c00b0000  { clock-frequency = <200000000>; };
 			vip1:vip@c00c2000 { src-force = <4>; };
 		};
 
@@ -380,7 +381,8 @@
 			#size-cells = <0>;
 			status = "okay";
 
-			touchscreen@38 {
+			/* Note: touch sensors are registered by onewire */
+			/*touchscreen@38 {
 				compatible = "edt,edt-ft5506";
 				reg = <0x38>;
 				interrupt-parent = <&gpio_c>;
@@ -390,7 +392,16 @@
 				touchscreen-size-x = <1280>;
 				touchscreen-size-y = <800>;
 				touchscreen-max-pressure = <255>;
-			};
+			};*/
+
+			/*touchscreen@46 {
+				compatible = "ite,it7260";
+				reg = <0x46>;
+				interrupt-parent = <&gpio_c>;
+				interrupts = <16 IRQ_TYPE_LEVEL_LOW>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&touchpanel_irq>;
+			};*/
 		};
 
 		pwm:pwm@c0018000 {
@@ -714,6 +725,25 @@
 
 		io-channels = <&adc 2>;
 		io-channel-names = "nanopi-thermistor";
+	};
+
+	nanopi-onewire {
+		interrupt-parent = <&gic>;
+		compatible = "friendlyarm,onewire";
+
+		channel-gpio = <&gpio_c 15 0>;
+		reg = <PHYS_BASE_TIMER 0x1000>;
+		interrupts = <0 IRQ_TIMER3 0>;
+		irq-timer = <3>;
+	};
+
+	onewire-touch {
+		compatible = "friendlyarm,onewire-touch";
+		interrupt-parent = <&gpio_c>;
+		interrupts = <16 IRQ_TYPE_NONE>;
+		i2c-bus = <&i2c_2>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&touchpanel_irq>;
 	};
 };
 
