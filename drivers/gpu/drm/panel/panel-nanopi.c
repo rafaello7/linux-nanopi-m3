@@ -215,8 +215,88 @@ static const struct drm_display_mode mode_w35 = {
 			DRM_MODE_FLAG_NCSYNC
 };
 
+static const struct drm_display_mode mode_w50 = {
+	.clock = 34558,
+	.hdisplay = 800,
+	.hsync_start = 800 + 40,
+	.hsync_end = 800 + 40 + 48,
+	.htotal = 800 + 40 + 48 + 40,
+	.vdisplay = 480,
+	.vsync_start = 480 + 20,
+	.vsync_end = 480 + 20 + 12,
+	.vtotal = 480 + 20 + 12 + 20,
+	.vrefresh = 70,
+};
+
+static const struct drm_display_mode mode_w101 = {
+	.clock = 49447,
+	.hdisplay = 1024,
+	.hsync_start = 1024 + 40,
+	.hsync_end = 1024 + 40 + 200,
+	.htotal = 1024 + 40 + 200 + 40,
+	.vdisplay = 600,
+	.vsync_start = 600 + 8,
+	.vsync_end = 600 + 8 + 16,
+	.vtotal = 600 + 8 + 16 + 8,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NCSYNC
+};
+
+static const struct drm_display_mode mode_a97 = {
+	.clock = 50567,
+	.hdisplay = 1024,
+	.hsync_start = 1024 + 12,
+	.hsync_end = 1024 + 12 + 4,
+	.htotal = 1024 + 12 + 4 + 12,
+	.vdisplay = 768,
+	.vsync_start = 768 + 8,
+	.vsync_end = 768 + 8 + 4,
+	.vtotal = 768 + 8 + 4 + 8,
+	.vrefresh = 61,
+};
+
+static const struct drm_display_mode mode_lq150 = {
+	.clock = 53790,
+	.hdisplay = 1024,
+	.hsync_start = 1024 + 12,
+	.hsync_end = 1024 + 12 + 40,
+	.htotal = 1024 + 12 + 40 + 12,
+	.vdisplay = 768,
+	.vsync_start = 768 + 8,
+	.vsync_end = 768 + 8 + 40,
+	.vtotal = 768 + 8 + 40 + 8,
+	.vrefresh = 60,
+};
+
+static const struct drm_display_mode mode_l80 = {
+	.clock = 24895,
+	.hdisplay = 640,
+	.hsync_start = 640 + 35,
+	.hsync_end = 640 + 35 + 73,
+	.htotal = 640 + 35 + 73 + 53,
+	.vdisplay = 480,
+	.vsync_start = 480 + 3,
+	.vsync_end = 480 + 3 + 6,
+	.vtotal = 480 + 3 + 6 + 29,
+	.vrefresh = 60,
+};
+
+static const struct drm_display_mode mode_bp101 = {
+	.clock = 65802,
+	.hdisplay = 1280,
+	.hsync_start = 1280 + 20,
+	.hsync_end = 1280 + 20 + 24,
+	.htotal = 1280 + 20 + 24 + 20,
+	.vdisplay = 800,
+	.vsync_start = 800 + 4,
+	.vsync_end = 800 + 4 + 8,
+	.vtotal = 800 + 4 + 8 + 4,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NCSYNC
+};
+
 static const struct drm_display_mode mode_atops = {
-	.clock = 34539,
+	.clock = 34540,
 	.hdisplay = 800,
 	.hsync_start = 800 + 210,
 	.hsync_end = 800 + 210 + 20,
@@ -231,6 +311,7 @@ static const struct drm_display_mode mode_atops = {
 static const struct nanopi_panel_desc nanopi_panels[] = {
 	{
 		.name = "hd101",
+		.onewireType = 25,
 		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 218,
@@ -238,13 +319,16 @@ static const struct nanopi_panel_desc nanopi_panels[] = {
 		.mode = &mode_hd101,
 	},{
 		.name = "hd101b",
+		.onewireType = 0,	/* unknown */
 		.i2c_touch_drv = "Goodix-TS",
+		.i2c_touch_reg = 0x5d,
 		.bpc  = 8,
 		.p_width = 218,
 		.p_height = 136,
 		.mode = &mode_hd101,
 	},{
 		.name = "hd700",
+		.onewireType = 18,
 		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 94,
@@ -252,14 +336,16 @@ static const struct nanopi_panel_desc nanopi_panels[] = {
 		.mode = &mode_hd700,
 	},{
 		.name = "hd702",
-		.onewireType = 24,
+		.onewireType = 30,
 		.i2c_touch_drv = "Goodix-TS",
+		.i2c_touch_reg = 0x5d,
 		.bpc  = 8,
 		.p_width = 94,
 		.p_height = 151,
 		.mode = &mode_hd700,
 	},{
 		.name = "s70",
+		.onewireType = 3,
 		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 155,
@@ -267,6 +353,7 @@ static const struct nanopi_panel_desc nanopi_panels[] = {
 		.mode = &mode_s70,
 	},{
 		.name = "s702",
+		.onewireType = 24,
 		.i2c_touch_drv = "onewire",
 		.bpc  = 8,
 		.p_width = 155,
@@ -274,6 +361,7 @@ static const struct nanopi_panel_desc nanopi_panels[] = {
 		.mode = &mode_s702,
 	},{
 		.name = "s70d",
+		.onewireType = 26,
 		.bpc  = 8,
 		.p_width = 155,
 		.p_height = 93,
@@ -289,29 +377,80 @@ static const struct nanopi_panel_desc nanopi_panels[] = {
 		.mode = &mode_x710,
 	},{
 		.name = "s430",
-		.i2c_touch_drv = "himax_ts",
+		.onewireType = 31,
+		.i2c_touch_drv = "hx8528-a",
+		.i2c_touch_reg = 0x48,
 		.bpc  = 8,
 		.p_width = 108,
 		.p_height = 64,
 		.mode = &mode_s430,
 	},{
 		.name = "h43",
+		.onewireType = 14,
 		.bpc  = 8,
 		.p_width = 96,
 		.p_height = 54,
 		.mode = &mode_h43,
 	},{
 		.name = "p43",
+		.onewireType = 19,
 		.bpc  = 8,
 		.p_width = 96,
 		.p_height = 54,
 		.mode = &mode_p43,
 	},{
 		.name = "w35",
+		.onewireType = 8,
 		.bpc  = 6,
 		.p_width = 70,
 		.p_height = 52,
 		.mode = &mode_w35,
+	},{
+		.name = "w50",
+		.onewireType = 4,
+		.bpc  = 8,
+		.p_width = 108,
+		.p_height = 64,
+		.mode = &mode_w50,
+	},{
+		.name = "w101",
+		.onewireType = 15,
+		.i2c_touch_drv = "onewire",
+		.bpc  = 8,
+		.p_width = 204,
+		.p_height = 120,
+		.mode = &mode_w101,
+	},{
+		.name = "a97",
+		.onewireType = 0,	/* unknown */
+		.bpc  = 8,
+		.p_width = 200,
+		.p_height = 150,
+		.mode = &mode_a97,
+	},{
+		.name = "lq150",
+		.onewireType = 0,	/* unknown */
+		.i2c_touch_drv = "onewire",
+		.bpc  = 8,
+		.p_width = 304,
+		.p_height = 228,
+		.mode = &mode_lq150,
+	},{
+		.name = "l80",
+		.onewireType = 5,
+		.i2c_touch_drv = "onewire",
+		.bpc  = 8,
+		.p_width = 160,
+		.p_height = 120,
+		.mode = &mode_l80,
+	},{
+		.name = "bp101",
+		.onewireType = 0,	/* unknown */
+		.i2c_touch_drv = "onewire",
+		.bpc  = 8,
+		.p_width = 218,
+		.p_height = 136,
+		.mode = &mode_bp101,
 	},{
 		.name = "atops",
 		.bpc  = 6,

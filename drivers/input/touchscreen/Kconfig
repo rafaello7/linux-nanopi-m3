@@ -1225,6 +1225,16 @@ config TOUCHSCREEN_IT7260
 	  To compile this driver as a module, choose M here: the
 	  module will be called it7260_mts.ko.
 
+config TOUCHSCREEN_HIMAX
+	tristate "Himax touchscreen support"
+	depends on I2C
+	help
+	  Say Y here if you have a Himax touchscreen and your
+	  board-specific setup code includes that in its table
+	  of I2C devices.
+
+	  If unsure, say N.
+
 config TOUCHSCREEN_1WIRE
 	tristate "1-Wire host and Touch Screen Driver"
 	depends on ARCH_S5P6818
