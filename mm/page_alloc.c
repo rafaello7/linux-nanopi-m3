@@ -2355,6 +2355,22 @@ void drain_local_pages(struct zone *zone)
 		drain_pages(cpu);
 }
 
+/* another version, as of smp_processor_id() cannot be used in preemptible code
+ */
+static void drain_local_pages_v2(struct zone *zone)
+{
+	struct per_cpu_pages *pcp;
+	unsigned long flags;
+
+	local_irq_save(flags);
+	pcp = &this_cpu_ptr(zone->pageset)->pcp;
+	if( pcp->count ) {
+		free_pcppages_bulk(zone, pcp->count, pcp);
+		pcp->count = 0;
+	}
+	local_irq_restore(flags);
+}
+
 static void drain_local_pages_wq(struct work_struct *work)
 {
 	/*
@@ -7557,6 +7573,7 @@ done:
 void free_contig_range(unsigned long pfn, unsigned nr_pages)
 {
 	unsigned int count = 0;
+	struct zone *zone = page_zone(pfn_to_page(pfn));
 
 	for (; nr_pages--; pfn++) {
 		struct page *page = pfn_to_page(pfn);
@@ -7565,6 +7582,7 @@ void free_contig_range(unsigned long pfn, unsigned nr_pages)
 		__free_page(page);
 	}
 	WARN(count != 0, "%d pages are still in use!\n", count);
+	drain_local_pages_v2(zone);
 }
 #endif
 
