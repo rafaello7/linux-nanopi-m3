@@ -765,10 +765,12 @@ static int nx_vpu_dec_start_streaming(struct vb2_queue *q, unsigned int count)
 			INIT_LIST_HEAD(&ctx->strm_queue);
 			ctx->strm_queue_cnt = 0;
 			spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
-		}else if( nx_vpu_dec_ctx_ready(ctx) )
-			nx_vpu_dec_try_cmd(ctx, DEC_RUN);
+		}else{
+		   	while( nx_vpu_dec_ctx_ready(ctx) )
+				nx_vpu_dec_try_cmd(ctx, DEC_RUN);
+		}
 	}else if( q->type == ctx->vq_img.type ) {
-		if ( nx_vpu_dec_ctx_ready(ctx) )
+		while ( nx_vpu_dec_ctx_ready(ctx) )
 			ret = nx_vpu_dec_try_cmd(ctx, DEC_RUN);
 		if( ret ) {
 			spin_lock_irqsave(&ctx->dev->irqlock, flags);
