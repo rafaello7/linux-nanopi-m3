@@ -36,21 +36,21 @@ enum dp_color_type {
 };
 
 void nx_soc_dp_plane_video_set_format(int module,
-			enum nx_mlc_yuvfmt format, bool adjust);
+			enum nx_mlc_yuvfmt format);
 void nx_soc_dp_plane_video_set_position(int module,
 			int src_x, int src_y, int src_w, int src_h,
-			int dst_x, int dst_y, int dst_w, int dst_h,
-			bool adjust);
+			int dst_x, int dst_y, int dst_w, int dst_h);
 void nx_soc_dp_plane_video_set_address_1p(int module, int left, int top,
-		unsigned int addr, unsigned int stride, bool adjust);
+		unsigned int addr, unsigned int stride);
 void nx_soc_dp_plane_video_set_address_3p(int module, int left, int top,
 		enum nx_mlc_yuvfmt format,
 		unsigned int lu_a, unsigned int lu_s,
 		unsigned int cb_a, unsigned int cb_s,
-		unsigned int cr_a, unsigned int cr_s,
-		bool adjust);
-void nx_soc_dp_plane_video_set_enable(int module, bool on, bool adjust);
+		unsigned int cr_a, unsigned int cr_s);
+void nx_soc_dp_plane_video_set_enable(int module, bool on);
 int nx_soc_dp_plane_video_get_priority(int module);
 void nx_soc_dp_plane_video_set_priority(int module, int priority);
+bool nx_soc_dp_plane_video_is_dirty(int module);
+void nx_soc_dp_plane_video_set_dirty(int module);
 
 #endif /* __S5PXX18_DP_DEV_H__ */

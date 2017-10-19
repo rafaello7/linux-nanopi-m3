@@ -16,47 +16,34 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/module.h>
-#include <linux/delay.h>
 #include "s5pxx18_dp_dev.h"
 
-#define	WAIT_VBLANK(m, n, o)
 #define	LAYER_VIDEO		PLANE_VIDEO_NUM
 
-static inline void dp_wait_vblank_done(int module, int layer)
+
+void nx_soc_dp_plane_video_set_dirty(int module)
 {
-	bool on = nx_mlc_get_layer_enable(module, layer);
-	int count = 40;
-
-	while (on) {
-		bool dflag = nx_mlc_get_dirty_flag(module, layer);
-
-		if (0 > --count || !dflag)
-			break;
-		msleep(2);
-	}
+	nx_mlc_set_dirty_flag(module, LAYER_VIDEO);
 }
 
-static inline void dp_plane_adjust(int module, int layer, bool now)
+bool nx_soc_dp_plane_video_is_dirty(int module)
 {
-	if (now)
-		nx_mlc_set_dirty_flag(module, layer);
+	return nx_mlc_get_dirty_flag(module, LAYER_VIDEO);
 }
 
 void nx_soc_dp_plane_video_set_format(int module,
-			enum nx_mlc_yuvfmt format, bool adjust)
+			enum nx_mlc_yuvfmt format)
 {
 	int m_lock_size = 16;
 
 	pr_debug("%s: format=0x%x\n", __func__, format);
 	nx_mlc_set_lock_size(module, LAYER_VIDEO, m_lock_size);
 	nx_mlc_set_format_yuv(module, format);
-	dp_plane_adjust(module, LAYER_VIDEO, adjust);
 }
 
 void nx_soc_dp_plane_video_set_position(int module,
 			int src_x, int src_y, int src_w, int src_h,
-			int dst_x, int dst_y, int dst_w, int dst_h,
-			bool adjust)
+			int dst_x, int dst_y, int dst_w, int dst_h)
 {
 	int sx = src_x, sy = src_y;
 	int sw = src_w, sh = src_h;
@@ -85,8 +72,8 @@ void nx_soc_dp_plane_video_set_position(int module,
 	if (h > 2048)
 		h = 2048;
 
-	pr_debug("%s: (%d, %d, %d, %d) to (%d, %d, %d, %d, %d, %d) adjust=%d\n",
-		 __func__, sx, sy, sw, sh, dx, dy, dw, dh, w, h, adjust);
+	pr_debug("%s: (%d, %d, %d, %d) to (%d, %d, %d, %d, %d, %d)\n",
+		 __func__, sx, sy, sw, sh, dx, dy, dw, dh, w, h);
 
 	if (sw == dw && sh == dh)
 		hf = 0, vf = 0;
@@ -94,13 +81,11 @@ void nx_soc_dp_plane_video_set_position(int module,
 	/* set scale and position */
 	nx_mlc_set_video_layer_scale(module, sw, sh, dw, dh, hf, hf, vf, vf);
 	nx_mlc_set_position(module, LAYER_VIDEO, dx, dy, w - 1, h - 1);
-	dp_plane_adjust(module, LAYER_VIDEO, adjust);
 }
 
 void nx_soc_dp_plane_video_set_address_1p(int module,
 		int left, int top,
-		unsigned int addr, unsigned int stride,
-		bool adjust)
+		unsigned int addr, unsigned int stride)
 {
 	unsigned int phys = addr + (left/2) + (top * stride);
 
@@ -108,18 +93,13 @@ void nx_soc_dp_plane_video_set_address_1p(int module,
 		__func__, addr, phys, stride);
 
 	nx_mlc_set_video_layer_address_yuyv(module, phys, stride);
-	dp_plane_adjust(module, LAYER_VIDEO, adjust);
-
-	if (adjust) /* wait for switch to the new buffer */
-		dp_wait_vblank_done(module, LAYER_VIDEO);
 }
 
 void nx_soc_dp_plane_video_set_address_3p(int module, int left, int top,
 		enum nx_mlc_yuvfmt format,
 		unsigned int lu_a, unsigned int lu_s,
 		unsigned int cb_a, unsigned int cb_s,
-		unsigned int cr_a, unsigned int cr_s,
-		bool adjust)
+		unsigned int cr_a, unsigned int cr_s)
 {
 	int ls = 1, us = 1;
 	int lh = 1, uh = 1;
@@ -147,37 +127,26 @@ void nx_soc_dp_plane_video_set_address_3p(int module, int left, int top,
 
 	nx_mlc_set_video_layer_stride(module, lu_s, cb_s, cr_s);
 	nx_mlc_set_video_layer_address(module, lu_a, cb_a, cr_a);
-	dp_plane_adjust(module, LAYER_VIDEO, adjust);
-
-	if (adjust) /* wait for switch to the new buffer */
-		dp_wait_vblank_done(module, LAYER_VIDEO);
 }
 
-void nx_soc_dp_plane_video_set_enable(int module, bool on, bool adjust)
+void nx_soc_dp_plane_video_set_enable(int module, bool on)
 {
 	int hl, hc, vl, vc;
 
 	pr_debug("%s: %s\n", __func__, on ? "on" : "off");
 
-	if (adjust)
-		dp_wait_vblank_done(module, LAYER_VIDEO);
-
 	if (on) {
 		nx_mlc_set_video_layer_line_buffer_power_mode(module, 1);
 		nx_mlc_set_video_layer_line_buffer_sleep_mode(module, 0);
 		nx_mlc_set_layer_enable(module, LAYER_VIDEO, 1);
-		dp_plane_adjust(module, LAYER_VIDEO, adjust);
 	} else {
 		nx_mlc_set_layer_enable(module, LAYER_VIDEO, 0);
-		dp_plane_adjust(module, LAYER_VIDEO, adjust);
-		WAIT_VBLANK(module, LAYER_VIDEO, 1);
 
 		nx_mlc_get_video_layer_scale_filter(module, &hl, &hc, &vl, &vc);
 		if (hl | hc | vl | vc)
 			nx_mlc_set_video_layer_scale_filter(module, 0, 0, 0, 0);
 		nx_mlc_set_video_layer_line_buffer_power_mode(module, 0);
 		nx_mlc_set_video_layer_line_buffer_sleep_mode(module, 1);
-		dp_plane_adjust(module, LAYER_VIDEO, adjust);
 	}
 }
 

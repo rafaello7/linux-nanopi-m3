@@ -5,6 +5,7 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/delay.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -65,7 +66,19 @@ struct nx_videolayer {
 	int module;
 	bool isEnabled;
 	bool isVidiocOverlayOn;
-	struct vb2_buffer *activeVb2Buf;
+
+	/* buffer wanted to display now (if displaying is enabled) */
+	struct vb2_buffer *bufWantDisplay;
+
+	/* Buffers whose (may be) currently displayed.
+	 * Buffer deactivation occurs asynchronously at vsync signal.
+	 */
+	struct vb2_buffer *bufsActiveTillDirty[2];
+
+	spinlock_t wq_lock;
+	bool isWorkActive;
+	struct workqueue_struct *workqueue;
+	struct work_struct buf_switch_wait_work;
 
 	/* source */
 	const struct NanoVideoFormat *format;
@@ -97,59 +110,152 @@ static unsigned round_up8(unsigned val)
 	return (val + 7) / 8 * 8;
 }
 
-enum PlaneUpdateHint {
-	PUH_INPUT_FORMAT,
-	PUH_OVERLAY_WINDOW
+enum PlaneUpdateKind {
+	PUK_INPUT_FORMAT,
+	PUK_VB2_BUF,
+	PUK_OVERLAY_WINDOW
 };
 
-static int dp_plane_update(struct nx_videolayer *vl, enum PlaneUpdateHint puh)
+static int dp_plane_update(struct nx_videolayer *vl, enum PlaneUpdateKind puk,
+		struct vb2_buffer *switchBuf)
 {
 	dma_addr_t uvdma[2];
-	bool enable;
+	bool enable, isDirtyPre, isDirtyPost, haveWork;
 	unsigned pitchesY;
 	phys_addr_t physaddr;
+	struct vb2_buffer *bufPrev, *doneBufs[2] = { NULL, NULL };
+	unsigned long flags;
 
+	if( puk != PUK_VB2_BUF )
+		switchBuf = vl->bufWantDisplay;
 	enable = vl->isVidiocOverlayOn && vl->format &&
-		vl->activeVb2Buf && vl->width && vl->height &&
+		switchBuf && vl->width && vl->height &&
 		vl->dst_width && vl->dst_height;
+	isDirtyPre = nx_soc_dp_plane_video_is_dirty(vl->module);
 	if( enable ) {
-		if( !vl->isEnabled || puh == PUH_OVERLAY_WINDOW ) {
+		const struct NanoVideoFormat *nvf = vl->format;
+
+		if( !vl->isEnabled || puk == PUK_OVERLAY_WINDOW ) {
 			nx_soc_dp_plane_video_set_position(vl->module,
 					0, 0, vl->width, vl->height,
 					vl->dst_left, vl->dst_top,
-					vl->dst_width, vl->dst_height, true);
+					vl->dst_width, vl->dst_height);
 		}
-		if( !vl->isEnabled || puh == PUH_INPUT_FORMAT ) {
-			const struct NanoVideoFormat *nvf = vl->format;
-			nx_soc_dp_plane_video_set_format(vl->module, nvf->nxfmt, true);
+		if( !vl->isEnabled || puk == PUK_INPUT_FORMAT )
+			nx_soc_dp_plane_video_set_format(vl->module, nvf->nxfmt);
+		if( !vl->isEnabled || puk == PUK_VB2_BUF ) {
 			pitchesY = round_up8(vl->width * nvf->bpp);
-			physaddr = vb2_dma_contig_plane_dma_addr(vl->activeVb2Buf, 0);
+			physaddr = vb2_dma_contig_plane_dma_addr(switchBuf, 0);
 			if( nvf->hsub ) {	// planar format
 				unsigned pitchesUV = pitchesY / nvf->hsub;
-				if( !vl->useSingleBuf && vl->activeVb2Buf->num_planes == 3 ) {
+				if( !vl->useSingleBuf && switchBuf->num_planes == 3 ) {
 					uvdma[nvf->isVU] =
-						vb2_dma_contig_plane_dma_addr(vl->activeVb2Buf, 1);
+						vb2_dma_contig_plane_dma_addr(switchBuf, 1);
 					uvdma[!nvf->isVU] =
-						vb2_dma_contig_plane_dma_addr(vl->activeVb2Buf, 2);
+						vb2_dma_contig_plane_dma_addr(switchBuf, 2);
 				}else{
 					uvdma[nvf->isVU] = physaddr + pitchesY * vl->height;
 					uvdma[!nvf->isVU] = uvdma[nvf->isVU] +
 						pitchesUV * vl->height / nvf->vsub;
 				}
-				nx_soc_dp_plane_video_set_address_3p(vl->module, 0, 0,
+				nx_soc_dp_plane_video_set_address_3p( vl->module, 0, 0,
 						nvf->nxfmt, physaddr, pitchesY,
-						uvdma[0], pitchesUV, uvdma[1], pitchesUV, true);
+						uvdma[0], pitchesUV, uvdma[1], pitchesUV);
 			}else{
 				nx_soc_dp_plane_video_set_address_1p(vl->module, 0, 0,
-					physaddr, pitchesY, true);
+						physaddr, pitchesY);
 			}
 		}
 	}
-	if( enable != vl->isEnabled ) {
-		nx_soc_dp_plane_video_set_enable(vl->module, enable, true);
-		vl->isEnabled = enable;
+	if( enable != vl->isEnabled )
+		nx_soc_dp_plane_video_set_enable(vl->module, enable);
+
+	spin_lock_irqsave(&vl->wq_lock, flags);
+	isDirtyPost = nx_soc_dp_plane_video_is_dirty(vl->module);
+	bufPrev = vl->isEnabled ? vl->bufWantDisplay : NULL;
+	if( isDirtyPost ) {
+		if( bufPrev != switchBuf &&
+				bufPrev != vl->bufsActiveTillDirty[0] &&
+				bufPrev != vl->bufsActiveTillDirty[1])
+			doneBufs[0] = bufPrev;
+	}else{
+		if( vl->bufsActiveTillDirty[0] != bufPrev &&
+				vl->bufsActiveTillDirty[0] != switchBuf )
+			doneBufs[0] = vl->bufsActiveTillDirty[0];
+		if( vl->bufsActiveTillDirty[1] != bufPrev &&
+				vl->bufsActiveTillDirty[1] != switchBuf )
+			doneBufs[1] = vl->bufsActiveTillDirty[1];
+		vl->bufsActiveTillDirty[0] = bufPrev;
+		if( isDirtyPre && bufPrev != switchBuf ) {
+			// in doubt which one is active now
+			vl->bufsActiveTillDirty[1] = switchBuf;
+		}else
+			vl->bufsActiveTillDirty[1] = NULL;
 	}
+	vl->bufWantDisplay = switchBuf;
+	vl->isEnabled = enable;
+	if( !vl->isWorkActive ) {
+		haveWork = ((vl->bufsActiveTillDirty[0] &&
+				vl->bufsActiveTillDirty[0] != vl->bufWantDisplay) ||
+			(vl->bufsActiveTillDirty[1] &&
+			 vl->bufsActiveTillDirty[1] != vl->bufWantDisplay));
+		vl->isWorkActive = haveWork;
+	}else
+		haveWork = false;
+	nx_soc_dp_plane_video_set_dirty(vl->module);
+	spin_unlock_irqrestore(&vl->wq_lock, flags);
+
+	if( doneBufs[0] )
+		vb2_buffer_done(doneBufs[0], VB2_BUF_STATE_DONE);
+	if( doneBufs[1] )
+		vb2_buffer_done(doneBufs[1], VB2_BUF_STATE_DONE);
+	if( haveWork )
+		queue_work(vl->workqueue, &vl->buf_switch_wait_work);
 	return 0;
+}
+
+static void buf_switch_wait_work(struct work_struct *work)
+{
+	struct nx_videolayer *vl;
+	bool isDirty, haveWork;
+	struct vb2_buffer *doneBufs[2] = { NULL, NULL };
+	unsigned long flags;
+	unsigned timeout = 50;
+
+	vl = container_of(work, struct nx_videolayer, buf_switch_wait_work);
+
+	/* Waiting for dirty flag cleanup to give back unused buffers. */
+	while( 1 ) {
+		spin_lock_irqsave(&vl->wq_lock, flags);
+
+		// timed wait as of dirty flag may be not cleaned when display is off
+		isDirty = --timeout && nx_soc_dp_plane_video_is_dirty(vl->module);
+		if( isDirty ) {
+			haveWork = (vl->bufsActiveTillDirty[0] &&
+					vl->bufsActiveTillDirty[0] != vl->bufWantDisplay) ||
+				(vl->bufsActiveTillDirty[1] &&
+				 vl->bufsActiveTillDirty[1] != vl->bufWantDisplay);
+		}else{
+			if( vl->bufsActiveTillDirty[0] != vl->bufWantDisplay )
+				doneBufs[0] = vl->bufsActiveTillDirty[0];
+			if( vl->bufsActiveTillDirty[1] != vl->bufWantDisplay )
+				doneBufs[1] = vl->bufsActiveTillDirty[1];
+			vl->bufsActiveTillDirty[0] = vl->isEnabled ?
+				vl->bufWantDisplay : NULL;
+			vl->bufsActiveTillDirty[1] = NULL;
+			haveWork = false;
+		}
+		vl->isWorkActive = haveWork;
+		spin_unlock_irqrestore(&vl->wq_lock, flags);
+
+		if( ! haveWork )
+			break;
+		msleep(2);
+	}
+	if( doneBufs[0] )
+		vb2_buffer_done(doneBufs[0], VB2_BUF_STATE_DONE);
+	if( doneBufs[1] )
+		vb2_buffer_done(doneBufs[1], VB2_BUF_STATE_DONE);
 }
 
 static int nano_video_vidioc_querycap(struct file *file, void *fh,
@@ -262,7 +368,7 @@ static int nano_video_vidioc_s_fmt_vid_out(struct file *file, void *fh,
 	vl->width = f->fmt.pix.width;
 	vl->height = f->fmt.pix.height;
 	vl->useSingleBuf = true;
-	dp_plane_update(vl, PUH_INPUT_FORMAT);
+	dp_plane_update(vl, PUK_INPUT_FORMAT, NULL);
 	f->fmt.pix.bytesperline = stride = round_up8(vl->width * nvf->bpp);
 	f->fmt.pix.sizeimage = stride * vl->height;
 	if( nvf->hsub )
@@ -382,7 +488,7 @@ static int nano_video_vidioc_s_fmt_vid_out_mplane(struct file *file, void *fh,
 	vl->width = f->fmt.pix_mp.width;
 	vl->height = f->fmt.pix_mp.height;
 	vl->useSingleBuf = f->fmt.pix_mp.num_planes == 1;
-	dp_plane_update(vl, PUH_INPUT_FORMAT);
+	dp_plane_update(vl, PUK_INPUT_FORMAT, NULL);
 	f->fmt.pix_mp.field = V4L2_FIELD_NONE;
 	if( ! vl->useSingleBuf )
 		f->fmt.pix_mp.num_planes = nvf->num_planes;
@@ -411,7 +517,7 @@ static int nano_video_vidioc_s_fmt_vid_out_overlay(struct file *file, void *fh,
 	vl->dst_top = f->fmt.win.w.top;
 	vl->dst_width = f->fmt.win.w.width;
 	vl->dst_height = f->fmt.win.w.height;
-	dp_plane_update(vl, PUH_OVERLAY_WINDOW);
+	dp_plane_update(vl, PUK_OVERLAY_WINDOW, NULL);
 	return 0;
 }
 
@@ -420,7 +526,7 @@ static int nano_video_vidioc_overlay(struct file *file, void *fh, unsigned i)
 	struct nx_videolayer *vl = video_drvdata(file);
 
 	vl->isVidiocOverlayOn = i != 0;
-	dp_plane_update(vl, PUH_OVERLAY_WINDOW);
+	dp_plane_update(vl, PUK_OVERLAY_WINDOW, NULL);
 	return 0;
 }
 
@@ -691,8 +797,8 @@ static int nano_video_vb2_queue_setup(struct vb2_queue *q,
 	sizeLume = stride * vl->height;
 	sizeUV = nvf->hsub ? stride / nvf->hsub * vl->height / nvf->vsub : 0;
 	if( *num_planes == 0 ) {
-		if( *num_buffers < 2 )
-			*num_buffers = 2;
+		if( *num_buffers < 3 )
+			*num_buffers = 3;
 		*num_planes = vl->useSingleBuf ? 1 : nvf->num_planes;
 		if( *num_planes == 3 ) {
 			sizes[0] = sizeLume;
@@ -719,12 +825,8 @@ static int nano_video_vb2_queue_setup(struct vb2_queue *q,
 static void nano_video_vb2_buf_queue(struct vb2_buffer *vb)
 {
 	struct nx_videolayer *vl = vb2_get_drv_priv(vb->vb2_queue);
-	struct vb2_buffer *doneBuf = vl->activeVb2Buf;
 
-	vl->activeVb2Buf = vb;
-	dp_plane_update(vl, PUH_INPUT_FORMAT);
-	if( doneBuf )
-		vb2_buffer_done(doneBuf, VB2_BUF_STATE_DONE);
+	dp_plane_update(vl, PUK_VB2_BUF, vb);
 }
 
 static int nano_video_vb2_start_streaming(struct vb2_queue *q, unsigned count)
@@ -732,7 +834,7 @@ static int nano_video_vb2_start_streaming(struct vb2_queue *q, unsigned count)
 	struct nx_videolayer *vl = vb2_get_drv_priv(q);
 
 	vl->isVidiocOverlayOn = true;
-	dp_plane_update(vl, PUH_INPUT_FORMAT);
+	dp_plane_update(vl, PUK_INPUT_FORMAT, NULL);
 	return 0;
 }
 
@@ -741,12 +843,8 @@ static void nano_video_vb2_stop_streaming(struct vb2_queue *q)
 	struct nx_videolayer *vl = vb2_get_drv_priv(q);
 
 	vl->isVidiocOverlayOn = false;
-	if( vl->activeVb2Buf ) {
-		struct vb2_buffer *doneBuf = vl->activeVb2Buf;
-		vl->activeVb2Buf = NULL;
-		dp_plane_update(vl, PUH_INPUT_FORMAT);
-		vb2_buffer_done(doneBuf, VB2_BUF_STATE_DONE);
-	}
+	dp_plane_update(vl, PUK_VB2_BUF, NULL);
+	flush_work(&vl->buf_switch_wait_work);
 }
 
 static struct vb2_ops nano_video_vb2_queue_ops = {
@@ -803,6 +901,15 @@ static int nano_video_probe(struct platform_device *pdev)
 		return ret;
 	}
 	mutex_init(&nvdev->lock);
+	spin_lock_init(&nvdev->vl.wq_lock);
+	nvdev->vl.workqueue = alloc_workqueue("nano-videodev",
+			WQ_UNBOUND | WQ_MEM_RECLAIM, 1);
+	INIT_WORK(&nvdev->vl.buf_switch_wait_work, buf_switch_wait_work);
+	if( ! nvdev->vl.workqueue ) {
+		dev_err(&pdev->dev, "unable to alloc workqueue\n");
+		ret = -ENOMEM;
+		goto err_unregister_v4l2;
+	}
 
 	nvdev->queue.type = single_plane_mode ? V4L2_BUF_TYPE_VIDEO_OUTPUT :
 		V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
@@ -817,7 +924,7 @@ static int nano_video_probe(struct platform_device *pdev)
 	ret = vb2_queue_init(&nvdev->queue);
 	if( ret ) {
 		dev_err(&pdev->dev, "queue init failed\n");
-		goto err_unregister_v4l2;
+		goto err_destroy_workqueue;
 	}
 	nvdev->vdev.queue = &nvdev->queue;
 	nvdev->vdev.v4l2_dev = &nvdev->v4l2_dev;
@@ -846,6 +953,8 @@ static int nano_video_probe(struct platform_device *pdev)
 	return 0;
 err_queue_release:
 	vb2_queue_release(&nvdev->queue);
+err_destroy_workqueue:
+	destroy_workqueue(nvdev->vl.workqueue);
 err_unregister_v4l2:
 	v4l2_device_unregister(&nvdev->v4l2_dev);
 	return ret;
@@ -857,6 +966,7 @@ static int nano_video_remove(struct platform_device *pdev)
 
 	video_unregister_device(&nvdev->vdev);
 	vb2_queue_release(&nvdev->queue);
+	destroy_workqueue(nvdev->vl.workqueue);
 	v4l2_device_unregister(&nvdev->v4l2_dev);
 	pr_info("nano-videodev: unregistered v4l2 device\n");
 	return 0;
