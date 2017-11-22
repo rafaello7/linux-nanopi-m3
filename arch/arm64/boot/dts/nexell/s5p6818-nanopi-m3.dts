@@ -45,6 +45,10 @@
 		reg = <0x40000000 0x40000000>;
 	};
 
+	aliases {
+		ethernet0 = &gmac0;
+	};
+
 	nx-v4l2 {
 		status = "okay";
 	};
